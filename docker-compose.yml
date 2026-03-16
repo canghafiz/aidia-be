@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: .
+    container_name: ai-dia_backend
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    command: >
+      sh -c "migrate -database 'postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable'
+      -path db/migrations up && ./main"

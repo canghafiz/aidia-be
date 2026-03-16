@@ -1,0 +1,2748 @@
+basePath: /api/v1
+definitions:
+  delivery.CreateDeliverySettingRequest:
+    properties:
+      description:
+        maxLength: 255
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        maxLength: 100
+        type: string
+    required:
+    - name
+    type: object
+  delivery.UpdateDeliverySettingRequest:
+    properties:
+      description:
+        maxLength: 255
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        maxLength: 100
+        type: string
+    required:
+    - name
+    type: object
+  delivery_avaibility.CreateDeliveryAvailabilityRequest:
+    properties:
+      date_range:
+        type: string
+      delivery_subgroup:
+        type: string
+      type:
+        enum:
+        - available
+        - unavailable
+        type: string
+    required:
+    - date_range
+    - delivery_subgroup
+    - type
+    type: object
+  delivery_avaibility.DeliveryAvailabilityResponse:
+    properties:
+      date_range:
+        type: string
+      delivery_name:
+        type: string
+      delivery_subgroup:
+        type: string
+      sub_group_name:
+        type: string
+      type:
+        type: string
+    type: object
+  delivery_avaibility.UpdateDeliveryAvailabilityRequest:
+    properties:
+      date_range:
+        type: string
+      delivery_subgroup:
+        type: string
+      type:
+        enum:
+        - available
+        - unavailable
+        type: string
+    required:
+    - date_range
+    - delivery_subgroup
+    - type
+    type: object
+  delivery_setting.DeliverySettingResponse:
+    properties:
+      description:
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        type: string
+      sub_group_name:
+        type: string
+    type: object
+  domains.BusinessProfile:
+    properties:
+      address:
+        type: string
+      businessName:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      phone:
+        type: string
+      tenant:
+        allOf:
+        - $ref: '#/definitions/domains.Tenant'
+        description: Relations
+      tenantId:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  domains.Roles:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      updatedAt:
+        type: string
+      userRoles:
+        description: Relations
+        items:
+          $ref: '#/definitions/domains.UserRoles'
+        type: array
+    type: object
+  domains.Tenant:
+    properties:
+      businessProfile:
+        $ref: '#/definitions/domains.BusinessProfile'
+      createdAt:
+        type: string
+      isActive:
+        type: boolean
+      role:
+        type: string
+      tenantID:
+        type: string
+      updatedAt:
+        type: string
+      user:
+        allOf:
+        - $ref: '#/definitions/domains.Users'
+        description: Relations
+      userID:
+        type: string
+    type: object
+  domains.TenantApprovalLogs:
+    properties:
+      action:
+        type: string
+      actionBy:
+        type: string
+      actor:
+        $ref: '#/definitions/domains.Users'
+      createdAt:
+        type: string
+      id:
+        type: string
+      updatedAt:
+        type: string
+      user:
+        allOf:
+        - $ref: '#/definitions/domains.Users'
+        description: Relations
+      userID:
+        type: string
+    type: object
+  domains.UserRoles:
+    properties:
+      role:
+        $ref: '#/definitions/domains.Roles'
+      roleID:
+        type: string
+      user:
+        allOf:
+        - $ref: '#/definitions/domains.Users'
+        description: Relations
+      userID:
+        type: string
+    type: object
+  domains.Users:
+    properties:
+      createdAt:
+        type: string
+      email:
+        type: string
+      gender:
+        type: string
+      isActive:
+        type: boolean
+      name:
+        type: string
+      password:
+        type: string
+      tenant:
+        allOf:
+        - $ref: '#/definitions/domains.Tenant'
+        description: Relations
+      tenantApprovalLogs:
+        items:
+          $ref: '#/definitions/domains.TenantApprovalLogs'
+        type: array
+      tenantSchema:
+        type: string
+      updatedAt:
+        type: string
+      userID:
+        type: string
+      userRoles:
+        items:
+          $ref: '#/definitions/domains.UserRoles'
+        type: array
+      username:
+        type: string
+    type: object
+  helpers.ApiResponse:
+    properties:
+      code:
+        type: integer
+      data: {}
+      success:
+        type: boolean
+    type: object
+  pagination.Response:
+    properties:
+      data: {}
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+  payment.CheckoutResponse:
+    properties:
+      invoice_id:
+        type: string
+      session_id:
+        type: string
+      session_url:
+        type: string
+    type: object
+  payment.InvoiceResponse:
+    properties:
+      duration:
+        type: string
+      id:
+        type: string
+      invoice_number:
+        type: string
+      is_paid:
+        type: boolean
+      paid_at:
+        type: string
+      payment_status:
+        type: string
+      plan_name:
+        type: string
+      price:
+        type: number
+      service_expired_on:
+        type: string
+      service_start:
+        type: string
+      service_status:
+        type: string
+      session_url:
+        type: string
+    type: object
+  plan.CreateRequest:
+    properties:
+      duration:
+        minimum: 1
+        type: integer
+      is_active:
+        type: boolean
+      is_month:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      price:
+        minimum: 0
+        type: number
+    required:
+    - duration
+    - is_month
+    - name
+    - price
+    type: object
+  plan.Response:
+    properties:
+      created_at:
+        type: string
+      duration:
+        type: integer
+      id:
+        type: string
+      is_active:
+        type: boolean
+      is_month:
+        type: boolean
+      name:
+        type: string
+      price:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  plan.UpdateRequest:
+    properties:
+      duration:
+        minimum: 1
+        type: integer
+      is_active:
+        type: boolean
+      is_month:
+        type: boolean
+      name:
+        maxLength: 100
+        minLength: 1
+        type: string
+      price:
+        minimum: 0
+        type: number
+    type: object
+  product_category.CreateProductCategoryRequest:
+    properties:
+      description:
+        maxLength: 100
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        maxLength: 100
+        type: string
+    required:
+    - name
+    type: object
+  product_category.ProductCategoryDetailResponse:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/product_category.ProductForCategoryResponse'
+        type: array
+      total_product:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  product_category.ProductCategoryResponse:
+    properties:
+      id:
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        type: string
+      total_product:
+        type: integer
+    type: object
+  product_category.ProductForCategoryResponse:
+    properties:
+      id:
+        type: string
+      images:
+        items:
+          $ref: '#/definitions/product_category.ProductImageResponse'
+        type: array
+      is_visible:
+        type: boolean
+      name:
+        type: string
+    type: object
+  product_category.ProductImageResponse:
+    properties:
+      id:
+        type: string
+      image:
+        type: string
+    type: object
+  product_category.UpdateProductCategoryRequest:
+    properties:
+      description:
+        maxLength: 100
+        type: string
+      is_visible:
+        type: boolean
+      name:
+        maxLength: 100
+        type: string
+    required:
+    - name
+    type: object
+  setting.GroupResponse:
+    properties:
+      group_name:
+        type: string
+      sub_groups:
+        items:
+          $ref: '#/definitions/setting.SubgroupResponse'
+        type: array
+    type: object
+  setting.Response:
+    properties:
+      name:
+        type: string
+      value:
+        type: string
+    type: object
+  setting.SubgroupResponse:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/setting.Response'
+        type: array
+      sub_group_name:
+        type: string
+    type: object
+  setting.UpdateBySubgroupRequest:
+    properties:
+      settings:
+        items:
+          $ref: '#/definitions/setting.UpdateSettingItem'
+        type: array
+    required:
+    - settings
+    type: object
+  setting.UpdateSettingItem:
+    properties:
+      name:
+        type: string
+      value:
+        type: string
+    required:
+    - name
+    - value
+    type: object
+  subs.ActivePlanInfo:
+    properties:
+      duration:
+        type: string
+      plan_name:
+        type: string
+      tenant_plan_id:
+        type: string
+      token_usage:
+        $ref: '#/definitions/subs.TokenUsage'
+      valid_from:
+        type: string
+      valid_until:
+        type: string
+    type: object
+  subs.Response:
+    properties:
+      active_plans:
+        items:
+          $ref: '#/definitions/subs.ActivePlanInfo'
+        type: array
+      current_token_usage:
+        $ref: '#/definitions/subs.TokenUsage'
+      is_free:
+        type: boolean
+      message:
+        type: string
+    type: object
+  subs.TokenUsage:
+    properties:
+      total_cost:
+        type: number
+      total_tokens:
+        description: -1 = unlimited
+        type: integer
+      used_tokens:
+        type: integer
+    type: object
+  user.BusinessProfileResponse:
+    properties:
+      address:
+        type: string
+      business_name:
+        type: string
+      id:
+        type: string
+      phone:
+        type: string
+    type: object
+  user.ChangePwRequest:
+    properties:
+      confirm_password:
+        type: string
+      current_password:
+        maxLength: 100
+        minLength: 6
+        type: string
+      new_password:
+        maxLength: 100
+        minLength: 6
+        type: string
+    required:
+    - confirm_password
+    - current_password
+    - new_password
+    type: object
+  user.CreateSuperAdminRequest:
+    properties:
+      email:
+        type: string
+      gender:
+        enum:
+        - Male
+        - Female
+        type: string
+      password:
+        maxLength: 100
+        minLength: 6
+        type: string
+      username:
+        maxLength: 150
+        minLength: 3
+        type: string
+    required:
+    - email
+    - gender
+    - password
+    - username
+    type: object
+  user.CreateUserRequest:
+    properties:
+      address:
+        maxLength: 255
+        type: string
+      business_name:
+        maxLength: 150
+        type: string
+      email:
+        type: string
+      gender:
+        enum:
+        - Male
+        - Female
+        type: string
+      name:
+        maxLength: 150
+        minLength: 1
+        type: string
+      password:
+        maxLength: 100
+        minLength: 6
+        type: string
+      phone:
+        maxLength: 20
+        type: string
+      role_id:
+        type: string
+      username:
+        maxLength: 150
+        minLength: 3
+        type: string
+    required:
+    - email
+    - gender
+    - name
+    - password
+    - role_id
+    - username
+    type: object
+  user.EditUserDataRequest:
+    properties:
+      address:
+        maxLength: 255
+        type: string
+      business_name:
+        maxLength: 150
+        type: string
+      email:
+        type: string
+      gender:
+        enum:
+        - Male
+        - Female
+        type: string
+      is_active:
+        type: boolean
+      name:
+        maxLength: 150
+        minLength: 1
+        type: string
+      phone:
+        maxLength: 20
+        type: string
+      role_id:
+        type: string
+      username:
+        maxLength: 150
+        minLength: 3
+        type: string
+    type: object
+  user.LoginRequest:
+    properties:
+      password:
+        maxLength: 100
+        minLength: 6
+        type: string
+      username_or_email:
+        maxLength: 150
+        minLength: 3
+        type: string
+    required:
+    - password
+    - username_or_email
+    type: object
+  user.LoginResponse:
+    properties:
+      access_token:
+        type: string
+      user_data:
+        $ref: '#/definitions/user.Response'
+    type: object
+  user.Response:
+    properties:
+      email:
+        type: string
+      gender:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+      tenant:
+        $ref: '#/definitions/user.TenantResponse'
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
+  user.SingleResponse:
+    properties:
+      address:
+        type: string
+      business_name:
+        type: string
+      email:
+        type: string
+      gender:
+        type: string
+      is_active:
+        type: boolean
+      name:
+        type: string
+      phone:
+        type: string
+      role:
+        type: string
+      tenant_schema:
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+    type: object
+  user.TenantResponse:
+    properties:
+      business_profile:
+        $ref: '#/definitions/user.BusinessProfileResponse'
+      is_active:
+        type: boolean
+      role:
+        type: string
+      tenant_id:
+        type: string
+    type: object
+  user.UpdateProfileNonClientRequest:
+    properties:
+      email:
+        type: string
+      gender:
+        enum:
+        - Male
+        - Female
+        type: string
+      name:
+        maxLength: 150
+        minLength: 1
+        type: string
+      username:
+        maxLength: 150
+        minLength: 3
+        type: string
+    type: object
+  user.UpdateProfileRequest:
+    properties:
+      address:
+        maxLength: 255
+        type: string
+      business_name:
+        maxLength: 150
+        type: string
+      email:
+        type: string
+      gender:
+        enum:
+        - Male
+        - Female
+        type: string
+      name:
+        maxLength: 150
+        minLength: 1
+        type: string
+      phone:
+        maxLength: 20
+        type: string
+      username:
+        maxLength: 150
+        minLength: 3
+        type: string
+    type: object
+host: 82.29.162.208:8005
+info:
+  contact: {}
+  description: REST API for AI-Dia application
+  title: AI-Dia API
+  version: "1.0"
+paths:
+  /approvals:
+    get:
+      description: Ambil semua approval logs dengan pagination (Hanya untuk role SuperAdmin)
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Approval
+  /approvals/{approval_id}:
+    delete:
+      description: Hapus approval log berdasarkan approval_id (Hanya untuk role SuperAdmin)
+      parameters:
+      - description: User ID
+        in: path
+        name: approval_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Approval
+    patch:
+      description: Approve user berdasarkan approval_id (Hanya untuk role SuperAdmin)
+      parameters:
+      - description: User ID
+        in: path
+        name: approval_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Approval
+  /auth/change-password:
+    patch:
+      consumes:
+      - application/json
+      description: Ganti password user yang sedang login
+      parameters:
+      - description: Change Password Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.ChangePwRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Auth
+  /auth/check-superadmin-exist:
+    get:
+      description: Cek apakah SuperAdmin sudah ada di sistem (jika true === ada, tidak
+        perlu panggil api create super admin), dipanggil pertama kali sebelum login
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  type: boolean
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Auth
+  /auth/create-superadmin:
+    post:
+      consumes:
+      - application/json
+      description: Buat akun SuperAdmin, hanya bisa dilakukan sekali
+      parameters:
+      - description: Create SuperAdmin Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.CreateSuperAdminRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Auth
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Login menggunakan username atau email beserta password
+      parameters:
+      - description: Login Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/user.LoginResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: Ambil data user yang sedang login beserta tenant dan business profile
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/user.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Auth
+  /client/{client_id}/delivery-availability-settings:
+    get:
+      description: Ambil semua pengaturan ketersediaan delivery beserta nama delivery
+        yang berelasi
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/delivery_avaibility.DeliveryAvailabilityResponse'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Availability Setting
+    post:
+      consumes:
+      - application/json
+      description: Buat pengaturan ketersediaan delivery baru, field type=available/not
+        available
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create Delivery Availability Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/delivery_avaibility.CreateDeliveryAvailabilityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Availability Setting
+  /client/{client_id}/delivery-availability-settings/{sub_group_name}:
+    delete:
+      description: Hapus pengaturan ketersediaan delivery berdasarkan sub group name
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Sub Group Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Availability Setting
+    get:
+      description: Ambil detail pengaturan ketersediaan delivery berdasarkan sub group
+        name
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Sub Group Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/delivery_avaibility.DeliveryAvailabilityResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Availability Setting
+    put:
+      consumes:
+      - application/json
+      description: Update pengaturan ketersediaan delivery berdasarkan sub group name,
+        field type=available/not available
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Sub Group Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      - description: Update Delivery Availability Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/delivery_avaibility.UpdateDeliveryAvailabilityRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Availability Setting
+  /client/{client_id}/delivery-settings:
+    get:
+      description: Ambil semua pengaturan delivery
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/delivery_setting.DeliverySettingResponse'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Setting
+    post:
+      consumes:
+      - application/json
+      description: Buat pengaturan delivery baru
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create Delivery Setting Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/delivery.CreateDeliverySettingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Setting
+  /client/{client_id}/delivery-settings/{sub_group_name}:
+    delete:
+      description: Hapus pengaturan delivery berdasarkan sub group name
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Sub Group Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Setting
+    get:
+      description: Ambil detail pengaturan delivery berdasarkan subgroup name
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Sub Group Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/delivery_setting.DeliverySettingResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Setting
+    put:
+      consumes:
+      - application/json
+      description: Update pengaturan delivery berdasarkan sub group name
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Sub Group Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      - description: Update Delivery Setting Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/delivery.UpdateDeliverySettingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Delivery Setting
+  /client/{client_id}/product-categories:
+    get:
+      description: Ambil semua kategori produk, filter berdasarkan visibility
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: 'Filter by visibility (default: true)'
+        in: query
+        name: is_visible
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/product_category.ProductCategoryResponse'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product Category
+    post:
+      consumes:
+      - application/json
+      description: Buat kategori produk baru
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create Product Category Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/product_category.CreateProductCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product Category
+  /client/{client_id}/product-categories/{category_id}:
+    delete:
+      description: Hapus kategori produk berdasarkan ID
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product Category
+    get:
+      description: Ambil detail kategori produk beserta produk yang berelasi
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/product_category.ProductCategoryDetailResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product Category
+    put:
+      consumes:
+      - application/json
+      description: Update kategori produk berdasarkan ID
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Category ID
+        in: path
+        name: category_id
+        required: true
+        type: string
+      - description: Update Product Category Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/product_category.UpdateProductCategoryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product Category
+  /client/{client_id}/products:
+    get:
+      description: Ambil semua produk dengan pagination
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product
+    post:
+      consumes:
+      - multipart/form-data
+      description: Buat produk baru beserta gambar dan kategori
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Nama produk
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Kode produk
+        in: formData
+        name: code
+        required: true
+        type: string
+      - description: Berat produk
+        in: formData
+        name: weight
+        required: true
+        type: number
+      - description: Harga jual
+        in: formData
+        name: price
+        required: true
+        type: number
+      - description: Harga asli
+        in: formData
+        name: original_price
+        required: true
+        type: number
+      - description: Deskripsi produk
+        in: formData
+        name: description
+        type: string
+      - description: Delivery ID (UUID)
+        in: formData
+        name: delivery_id
+        required: true
+        type: string
+      - description: Stok habis
+        in: formData
+        name: is_out_of_stock
+        type: boolean
+      - collectionFormat: csv
+        description: Category IDs (UUID)
+        in: formData
+        items:
+          type: string
+        name: category_ids
+        type: array
+      - description: Gambar produk
+        in: formData
+        name: images
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product
+  /client/{client_id}/products/{product_id}:
+    delete:
+      description: Hapus produk beserta gambar dan kategori
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product
+    get:
+      description: Ambil detail produk berdasarkan ID
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product
+    put:
+      consumes:
+      - multipart/form-data
+      description: Update produk beserta gambar dan kategori
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: string
+      - description: Nama produk
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Kode produk
+        in: formData
+        name: code
+        required: true
+        type: string
+      - description: Berat produk
+        in: formData
+        name: weight
+        required: true
+        type: number
+      - description: Harga jual
+        in: formData
+        name: price
+        required: true
+        type: number
+      - description: Harga asli
+        in: formData
+        name: original_price
+        required: true
+        type: number
+      - description: Deskripsi produk
+        in: formData
+        name: description
+        type: string
+      - description: Delivery ID (UUID)
+        in: formData
+        name: delivery_id
+        required: true
+        type: string
+      - description: Stok habis
+        in: formData
+        name: is_out_of_stock
+        type: boolean
+      - description: Status aktif
+        in: formData
+        name: is_active
+        type: boolean
+      - collectionFormat: csv
+        description: Category IDs (UUID)
+        in: formData
+        items:
+          type: string
+        name: category_ids
+        type: array
+      - description: Gambar produk baru (kosongkan jika tidak ingin mengubah)
+        in: formData
+        name: images
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Product
+  /payments/client/checkout/{order_id}:
+    post:
+      description: '[BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik
+        tenant (Stripe per tenant). Endpoint ini belum aktif digunakan karena fitur
+        pembayaran order tenant masih dalam pengembangan.'
+      parameters:
+      - description: Order ID
+        in: path
+        name: order_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/payment.CheckoutResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Payment Client
+  /payments/client/invoices:
+    get:
+      description: '[BELUM DIGUNAKAN] Ambil semua invoice order milik tenant yang
+        sedang login dengan pagination. Endpoint ini belum aktif digunakan karena
+        fitur pembayaran order tenant masih dalam pengembangan.'
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Payment Client
+  /payments/client/webhook/{schema}:
+    post:
+      consumes:
+      - application/json
+      description: '[BELUM DIGUNAKAN] Endpoint untuk menerima event webhook dari Stripe
+        per tenant. Endpoint ini belum aktif digunakan karena fitur pembayaran order
+        tenant masih dalam pengembangan.'
+      parameters:
+      - description: Tenant Schema
+        in: path
+        name: schema
+        required: true
+        type: string
+      - description: Stripe Webhook Signature
+        in: header
+        name: Stripe-Signature
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Payment Client
+  /payments/platform/checkout/{plan_id}:
+    post:
+      description: Buat sesi pembayaran Stripe untuk pembelian plan (platform Aidia),
+        mengembalikan session URL untuk redirect ke halaman pembayaran Stripe
+      parameters:
+      - description: Plan ID
+        in: path
+        name: plan_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/payment.CheckoutResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Payment Platform
+  /payments/platform/invoices:
+    get:
+      description: Ambil semua invoice pembelian plan milik tenant yang sedang login
+        dengan pagination
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Payment Platform
+  /payments/platform/invoices/{invoice_id}:
+    get:
+      description: Ambil detail invoice pembelian plan berdasarkan invoice ID
+      parameters:
+      - description: Invoice ID
+        in: path
+        name: invoice_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/payment.InvoiceResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Payment Platform
+  /payments/platform/invoices/{invoice_id}/pay:
+    post:
+      description: Buat ulang sesi pembayaran Stripe untuk invoice yang belum dibayar,
+        digunakan jika sesi sebelumnya expired
+      parameters:
+      - description: Invoice ID
+        in: path
+        name: invoice_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/payment.CheckoutResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Payment Platform
+  /payments/platform/webhook:
+    post:
+      consumes:
+      - application/json
+      description: Endpoint untuk menerima event webhook dari Stripe platform Aidia
+        (invoice.paid / invoice.payment_failed), tidak memerlukan autentikasi (TIDAK
+        DIPAKAI KARENA INI UNTUK WEBHOOK SAJA)
+      parameters:
+      - description: Stripe Webhook Signature
+        in: header
+        name: Stripe-Signature
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Payment Platform
+  /plans:
+    get:
+      description: Ambil semua plan dengan pagination
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Plan
+    post:
+      consumes:
+      - application/json
+      description: Buat plan baru (Hanya untuk SuperAdmin)
+      parameters:
+      - description: Create Plan Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/plan.CreateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Plan
+  /plans/{plan_id}:
+    delete:
+      description: Hapus plan berdasarkan plan_id (Hanya untuk SuperAdmin)
+      parameters:
+      - description: Plan ID
+        in: path
+        name: plan_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Plan
+    get:
+      description: Ambil data plan berdasarkan plan_id
+      parameters:
+      - description: Plan ID
+        in: path
+        name: plan_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/plan.Response'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Plan
+    put:
+      consumes:
+      - application/json
+      description: Update plan berdasarkan plan_id (Hanya untuk SuperAdmin)
+      parameters:
+      - description: Plan ID
+        in: path
+        name: plan_id
+        required: true
+        type: string
+      - description: Update Plan Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/plan.UpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Plan
+  /plans/{plan_id}/toggle:
+    patch:
+      description: Toggle status aktif plan berdasarkan plan_id (Hanya untuk SuperAdmin)
+      parameters:
+      - description: Plan ID
+        in: path
+        name: plan_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Plan
+  /roles:
+    get:
+      description: Ambil semua data role
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/domains.Roles'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Roles
+  /settings/integration:
+    get:
+      description: Ambil data setting integrasi. SuperAdmin mendapat semua data, Client
+        hanya mendapat data Telegram
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/setting.GroupResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Integration Settings
+      tags:
+      - Settings
+  /settings/notification:
+    get:
+      description: Ambil data setting notifikasi
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/setting.GroupResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Notification Settings
+      tags:
+      - Settings
+  /settings/subgroup-name/{sub_group_name}:
+    patch:
+      consumes:
+      - application/json
+      description: Update value setting berdasarkan subgroup name
+      parameters:
+      - description: Subgroup Name
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      - description: Update Setting Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/setting.UpdateBySubgroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Update Settings by Subgroup
+      tags:
+      - Settings
+  /subs/current:
+    get:
+      description: |-
+        Ambil status subscription aktif tenant yang sedang login.
+        Mengembalikan info plan aktif (single/multiple), token usage, dan pesan status.
+        Jika tidak ada plan aktif, kembalikan info free plan usage.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/subs.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Subscription
+  /users:
+    get:
+      description: Ambil semua user dengan pagination
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      description: Buat user baru role admin / client, untuk data role id didapetin
+        dari manggil api roles
+      parameters:
+      - description: Create User Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+  /users/{user_id}:
+    delete:
+      description: Hapus user berdasarkan user_id
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+    get:
+      description: Ambil data user berdasarkan user_id
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/user.SingleResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      tags:
+      - Users
+  /users/{user_id}/client:
+    put:
+      consumes:
+      - application/json
+      description: Update profile user login role client berdasarkan user_id
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Update Profile Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+  /users/{user_id}/non-client:
+    put:
+      consumes:
+      - application/json
+      description: Update profile user login role yang bukan client berdasarkan user_id
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Update Profile Non Client Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.UpdateProfileNonClientRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+  /users/{user_id}/other:
+    put:
+      consumes:
+      - application/json
+      description: Edit user data lain berdasarkan user_id
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: string
+      - description: Update User Data Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/user.EditUserDataRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+  /users/filter:
+    get:
+      description: Filter user berdasarkan name, email, dan role dengan pagination
+      parameters:
+      - description: Name
+        in: query
+        name: name
+        type: string
+      - description: Email
+        in: query
+        name: email
+        type: string
+      - description: Role
+        in: query
+        name: role
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+securityDefinitions:
+  BearerAuth:
+    description: 'Format: "Bearer {token}" — paste token dari login response, accessToken'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
