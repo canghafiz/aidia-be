@@ -6,7 +6,7 @@
         "contact": {},
         "version": "1.0"
     },
-    "host": "82.29.162.208:8005",
+    "host": "data.ai-dia.com",
     "basePath": "/api/v1",
     "paths": {
         "/approvals": {
