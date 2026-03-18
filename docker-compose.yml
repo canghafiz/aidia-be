@@ -1,12 +1,23 @@
 services:
   backend:
     build: .
-    container_name: ai-dia_backend
     restart: always
     env_file:
       - .env
-    ports:
-      - "${APP_PORT}:${APP_PORT}"
     command: >
       sh -c "migrate -database 'postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable'
       -path db/migrations up && ./main"
+
+    networks:
+      - coolify
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.ai-dia.rule=Host(`data.ai-dia.com`)"
+      - "traefik.http.routers.ai-dia.entrypoints=https"
+      - "traefik.http.routers.ai-dia.tls.certresolver=letsencrypt"
+      - "traefik.http.services.ai-dia.loadbalancer.server.port=8005"
+
+networks:
+  coolify:
+    external: true
