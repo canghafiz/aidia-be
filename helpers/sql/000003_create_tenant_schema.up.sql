@@ -231,13 +231,14 @@ CREATE TYPE :schema_name.payment_status AS ENUM (
                                                 );
 
 CREATE TABLE IF NOT EXISTS :schema_name.order_payments (
-                                                           id             UUID                            PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id       INTEGER                         NOT NULL,
-    payment_status :schema_name.payment_status     NOT NULL DEFAULT 'Unpaid',
-    payment_method VARCHAR(50)                     NOT NULL DEFAULT 'stripe',
-    total_price    NUMERIC(15,2)                   NOT NULL DEFAULT 0,
-    created_at     TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
+                                                           id             UUID                        PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id       INTEGER                     NOT NULL,
+    payment_status :schema_name.payment_status NOT NULL DEFAULT 'Unpaid',
+    payment_method VARCHAR(50)                 NOT NULL DEFAULT 'stripe',
+    total_price    NUMERIC(15,2)               NOT NULL DEFAULT 0,
+    expire_at      TIMESTAMPTZ                 NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
+    created_at     TIMESTAMPTZ                 NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ                 NOT NULL DEFAULT NOW(),
 
     CONSTRAINT fk_order_payments_order
     FOREIGN KEY (order_id) REFERENCES :schema_name.orders (id)
