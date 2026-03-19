@@ -192,6 +192,17 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 		return errValidator
 	}
 
+	// ── Cek duplikat sebelum apapun ──
+	existingUsername, _ := serv.UserRepo.FindByUsernameOrEmail(serv.Db, request.Username)
+	if existingUsername != nil {
+		return fmt.Errorf("user already exists")
+	}
+
+	existingEmail, _ := serv.UserRepo.FindByUsernameOrEmail(serv.Db, request.Email)
+	if existingEmail != nil {
+		return fmt.Errorf("user already exists")
+	}
+
 	model := user.CreateUserRequestToDomain(request)
 	model.IsActive = *role == "SuperAdmin"
 
@@ -235,10 +246,10 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 			dropSchema()
 		}
 	}()
-	defer tx.Rollback()
 
 	// 1. Create user
 	if err := serv.UserRepo.Create(tx, model); err != nil {
+		tx.Rollback()
 		log.Printf("[CreateUser] Create error: %v", err)
 		dropSchema()
 		if isDuplicateError(err) {
@@ -250,12 +261,14 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 	// 2. Get saved user to get UserID
 	saved, err := serv.UserRepo.FindByUsernameOrEmail(tx, model.Username)
 	if err != nil || saved == nil {
+		tx.Rollback()
 		dropSchema()
 		return fmt.Errorf("failed to retrieve created user")
 	}
 
 	// 3. Assign role
 	if err := serv.UserRepo.AssignRole(tx, saved.UserID, roleData.Name); err != nil {
+		tx.Rollback()
 		log.Printf("[CreateUser] AssignRole error: %v", err)
 		dropSchema()
 		return fmt.Errorf("failed to assign role")
@@ -265,6 +278,7 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 	if isClient {
 		saved.TenantSchema = &saved.Username
 		if err := serv.UserRepo.UpdateTenantSchema(tx, *saved); err != nil {
+			tx.Rollback()
 			log.Printf("[CreateUser] UpdateTenantSchema error: %v", err)
 			dropSchema()
 			return fmt.Errorf("failed to update tenant schema")
@@ -276,6 +290,7 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 			IsActive: true,
 		}
 		if err := tx.Create(&tenant).Error; err != nil {
+			tx.Rollback()
 			log.Printf("[CreateUser] Create tenant error: %v", err)
 			dropSchema()
 			return fmt.Errorf("failed to create tenant")
@@ -290,6 +305,7 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 			bp.Address = model.Tenant.BusinessProfile.Address
 		}
 		if err := tx.Create(&bp).Error; err != nil {
+			tx.Rollback()
 			log.Printf("[CreateUser] Create business_profile error: %v", err)
 			dropSchema()
 			return fmt.Errorf("failed to create business profile")
@@ -304,6 +320,7 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 			Action: &action,
 		}
 		if err := serv.UserRepo.CreateApprovalLogs(tx, logs); err != nil {
+			tx.Rollback()
 			log.Printf("[CreateUser] CreateApprovalLogs error: %v", err)
 			dropSchema()
 			return fmt.Errorf("failed to create approval logs")

@@ -159,6 +159,23 @@ func NewRouter(r Router) *Router {
 			productGroup.GET("/:product_id", r.Dependency.ProductCont.GetByID)
 			productGroup.DELETE("/:product_id", r.Dependency.ProductCont.Delete)
 		}
+
+		// Customer
+		customerGroup := generalGroup.Group("client/:client_id/customers").Use(middleware)
+		{
+			customerGroup.POST("", r.Dependency.CustomerCont.Create)
+			customerGroup.GET("", r.Dependency.CustomerCont.GetAll)
+			customerGroup.GET("/:customer_id", r.Dependency.CustomerCont.GetByID)
+		}
+
+		// Order
+		orderGroup := generalGroup.Group("client/:client_id/orders").Use(middleware)
+		{
+			orderGroup.POST("", r.Dependency.OrderCont.Create)
+			orderGroup.GET("", r.Dependency.OrderCont.GetAll)
+			orderGroup.GET("/:order_id", r.Dependency.OrderCont.GetByID)
+			orderGroup.PATCH("/:order_id/status", r.Dependency.OrderCont.UpdateStatus)
+		}
 	}
 
 	return &Router{

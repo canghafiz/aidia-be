@@ -27,6 +27,8 @@ type Dependency struct {
 	DeliverySettingCont             controllers.DeliverySettingCont
 	DeliveryAvailabilitySettingCont controllers.DeliveryAvailabilitySettingCont
 	ProductCont                     controllers.ProductCont
+	CustomerCont                    controllers.CustomerCont
+	OrderCont                       controllers.OrderCont
 }
 
 func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *Dependency {
@@ -43,6 +45,8 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	deliverySettingRepo := impl.NewDeliverySettingRepoImpl()
 	deliveryAvailabilitySettingRepo := impl.NewDeliveryAvailabilitySettingRepoImpl()
 	productRepo := impl.NewProductRepoImpl()
+	customerRepo := impl.NewCustomerRepoImpl()
+	orderRepo := impl.NewOrderRepoImpl()
 
 	// Serv
 	userServ := implServ.NewUsersServImpl(db, validator, userRepo, jwtKey)
@@ -57,6 +61,8 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	deliveryAvailabilitySettingServ := implServ.NewDeliveryAvailabilitySettingServImpl(db, validator, userRepo, deliveryAvailabilitySettingRepo, deliverySettingRepo)
 	fileServ := implServ.NewFileServImpl()
 	productServ := implServ.NewProductServImpl(db, validator, userRepo, productRepo, deliverySettingRepo, fileServ)
+	customerServ := implServ.NewCustomerServImpl(db, validator, userRepo, customerRepo, jwtKey)
+	orderServ := implServ.NewOrderServImpl(db, jwtKey, validator, userRepo, customerRepo, orderRepo, productRepo, deliverySettingRepo)
 
 	return &Dependency{
 		JwtKey: jwtKey,
@@ -74,5 +80,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		DeliverySettingCont:             implCont.NewDeliverySettingContImpl(deliverySettingServ),
 		DeliveryAvailabilitySettingCont: implCont.NewDeliveryAvailabilitySettingContImpl(deliveryAvailabilitySettingServ),
 		ProductCont:                     implCont.NewProductContImpl(productServ),
+		CustomerCont:                    implCont.NewCustomerContImpl(customerServ),
+		OrderCont:                       implCont.NewOrderContImpl(orderServ),
 	}
 }

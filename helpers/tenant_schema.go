@@ -15,10 +15,52 @@ var tenantSchemaDownSQL string
 
 func CreateTenantSchema(db *gorm.DB, schemaName string) error {
 	sql := strings.ReplaceAll(tenantSchemaUpSQL, ":schema_name", schemaName)
-	return db.Exec(sql).Error
+
+	statements := splitStatements(sql)
+	for _, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func DropTenantSchema(db *gorm.DB, schemaName string) error {
 	sql := strings.ReplaceAll(tenantSchemaDownSQL, ":schema_name", schemaName)
-	return db.Exec(sql).Error
+
+	statements := splitStatements(sql)
+	for _, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func splitStatements(sql string) []string {
+	var statements []string
+	var current strings.Builder
+	inDollarQuote := false
+
+	lines := strings.Split(sql, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, "$$") {
+			inDollarQuote = !inDollarQuote
+		}
+		current.WriteString(line + "\n")
+		if !inDollarQuote && strings.HasSuffix(strings.TrimSpace(line), ";") {
+			statements = append(statements, current.String())
+			current.Reset()
+		}
+	}
+
+	return statements
 }

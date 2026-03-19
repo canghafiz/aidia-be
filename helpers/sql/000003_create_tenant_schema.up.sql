@@ -148,91 +148,118 @@ CREATE TABLE IF NOT EXISTS :schema_name.product_category_dto (
     );
 
 -- ============================================================
+-- Customer
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS :schema_name.customer (
+                                                     id                 SERIAL       PRIMARY KEY,
+                                                     name               VARCHAR(150) NOT NULL,
+    phone_country_code VARCHAR(5)   NOT NULL,
+    phone_number       VARCHAR(20)  NOT NULL,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+    );
+
+CREATE INDEX idx_customer_phone ON :schema_name.customer (phone_country_code, phone_number);
+
+-- ============================================================
 -- Orders
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS :schema_name.orders (
-                                                   id                     UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    code                   VARCHAR(30)   NOT NULL UNIQUE,
-    guest_id               UUID          NOT NULL,
-    order_type             VARCHAR(50),
-    packing_type           VARCHAR(50),
-    address                TEXT,
-    postcode               VARCHAR(10),
-    delivery_charge        NUMERIC(15,2) DEFAULT 0,
-    delivery_date          DATE,
-    delivery_time          VARCHAR(20),
-    delivery_instructions  TEXT,
-    status_id              UUID,
-    stripe_session_id      VARCHAR(150),
-    stripe_session_url     TEXT,
-    stripe_payment_status  VARCHAR(50),
-    stripe_payment_message TEXT,
-    is_paid                BOOLEAN       NOT NULL DEFAULT FALSE,
-    is_read                BOOLEAN       NOT NULL DEFAULT FALSE,
-    is_active              BOOLEAN       NOT NULL DEFAULT TRUE,
-    created_at             TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    updated_at             TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+CREATE TYPE :schema_name.order_status AS ENUM (
+                                                  'Pending',
+                                                  'Confirmed',
+                                                  'Completed',
+                                                  'Cancelled'
+                                              );
 
-    CONSTRAINT fk_orders_guest
-    FOREIGN KEY (guest_id) REFERENCES :schema_name.guest (id)
+CREATE TABLE IF NOT EXISTS :schema_name.orders (
+                                                   id                      SERIAL                          PRIMARY KEY,
+                                                   customer_id             INTEGER                         NOT NULL,
+                                                   total_price             NUMERIC(15,2)                   NOT NULL DEFAULT 0,
+    status                  :schema_name.order_status       NOT NULL DEFAULT 'Pending',
+    delivery_sub_group_name VARCHAR(100)                    NOT NULL,
+    street_address          VARCHAR(100)                    NOT NULL,
+    postal_code             VARCHAR(20)                     NOT NULL,
+    created_at              TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_orders_customer
+    FOREIGN KEY (customer_id) REFERENCES :schema_name.customer (id)
     ON DELETE RESTRICT
     );
 
-CREATE INDEX idx_orders_guest_id       ON :schema_name.orders (guest_id);
-CREATE INDEX idx_orders_status_created ON :schema_name.orders (status_id, created_at);
-CREATE INDEX idx_orders_paid_active    ON :schema_name.orders (is_paid, is_active);
-CREATE INDEX idx_orders_read_active    ON :schema_name.orders (is_read, is_active);
-CREATE INDEX idx_orders_stripe_session ON :schema_name.orders (stripe_session_id);
-CREATE INDEX idx_orders_delivery_date  ON :schema_name.orders (delivery_date);
+CREATE INDEX idx_orders_customer_id    ON :schema_name.orders (customer_id);
+CREATE INDEX idx_orders_status_created ON :schema_name.orders (status, created_at);
 CREATE INDEX idx_orders_created_at     ON :schema_name.orders (created_at);
 
 -- ============================================================
--- Order Detail
+-- Order Product
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS :schema_name.order_detail (
-                                                         id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id     UUID          NOT NULL,
-    product_id   UUID,
-    product_name VARCHAR(150)  NOT NULL,
-    qty          INTEGER       NOT NULL DEFAULT 1,
-    price        NUMERIC(15,2) NOT NULL DEFAULT 0,
-    total_price  NUMERIC(15,2) NOT NULL DEFAULT 0,
-    is_active    BOOLEAN       NOT NULL DEFAULT TRUE,
-    created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+CREATE TABLE IF NOT EXISTS :schema_name.order_products (
+                                                           id          SERIAL        PRIMARY KEY,
+                                                           order_id    INTEGER       NOT NULL,
+                                                           product_id  UUID          NOT NULL,
+                                                           quantity    INTEGER       NOT NULL DEFAULT 1,
+                                                           total_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT fk_order_detail_order
+    CONSTRAINT fk_order_products_order
     FOREIGN KEY (order_id) REFERENCES :schema_name.orders (id)
     ON DELETE RESTRICT,
 
-    CONSTRAINT fk_order_detail_product
+    CONSTRAINT fk_order_products_product
     FOREIGN KEY (product_id) REFERENCES :schema_name.product (id)
-    ON DELETE SET NULL
+    ON DELETE RESTRICT
     );
 
-CREATE INDEX idx_order_detail_order_id   ON :schema_name.order_detail (order_id);
-CREATE INDEX idx_order_detail_product_id ON :schema_name.order_detail (product_id);
+CREATE INDEX idx_order_products_order_id   ON :schema_name.order_products (order_id);
+CREATE INDEX idx_order_products_product_id ON :schema_name.order_products (product_id);
 
 -- ============================================================
--- Order History
+-- Order Payment
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS :schema_name.order_history (
-                                                          id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    order_id   UUID        NOT NULL,
-    status_id  UUID        NOT NULL,
-    is_active  BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+CREATE TYPE :schema_name.payment_status AS ENUM (
+                                                    'Unpaid',
+                                                    'Confirming_Payment',
+                                                    'Paid',
+                                                    'Refunded',
+                                                    'Voided'
+                                                );
 
-    CONSTRAINT fk_order_history_order
+CREATE TABLE IF NOT EXISTS :schema_name.order_payments (
+                                                           id             UUID                            PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id       INTEGER                         NOT NULL,
+    payment_status :schema_name.payment_status     NOT NULL DEFAULT 'Unpaid',
+    payment_method VARCHAR(50)                     NOT NULL DEFAULT 'stripe',
+    total_price    NUMERIC(15,2)                   NOT NULL DEFAULT 0,
+    created_at     TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_order_payments_order
     FOREIGN KEY (order_id) REFERENCES :schema_name.orders (id)
     ON DELETE RESTRICT
     );
 
-CREATE INDEX idx_order_history_order_created ON :schema_name.order_history (order_id, created_at);
+CREATE INDEX idx_order_payments_order_id ON :schema_name.order_payments (order_id);
+CREATE INDEX idx_order_payments_status   ON :schema_name.order_payments (payment_status);
+
+CREATE OR REPLACE FUNCTION :schema_name.fn_insert_order_payment()
+    RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO :schema_name.order_payments (order_id, payment_status, payment_method, total_price)
+    VALUES (NEW.id, 'Unpaid':::schema_name.payment_status, 'stripe', NEW.total_price);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_insert_order_payment
+    AFTER INSERT ON :schema_name.orders
+    FOR EACH ROW
+EXECUTE FUNCTION :schema_name.fn_insert_order_payment();
 
 -- ============================================================
 -- Setting

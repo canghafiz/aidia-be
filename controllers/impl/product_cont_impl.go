@@ -34,7 +34,7 @@ func NewProductContImpl(productServ services.ProductServ) *ProductContImpl {
 // @Param        price            formData  number    true  "Harga jual"
 // @Param        original_price   formData  number    true  "Harga asli"
 // @Param        description      formData  string    false "Deskripsi produk"
-// @Param        delivery_id      formData  string    true  "Delivery ID (UUID)"
+// @Param        delivery_sub_group_name      formData  string    true  "Delivery Sub Group Name (UUID)"
 // @Param        is_out_of_stock  formData  boolean   false "Stok habis"
 // @Param        category_ids     formData  []string  false "Category IDs (UUID)"
 // @Param        images           formData  file      false "Gambar produk"

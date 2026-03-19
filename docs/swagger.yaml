@@ -1,5 +1,36 @@
 basePath: /api/v1
 definitions:
+  customer.CreateCustomerRequest:
+    properties:
+      name:
+        maxLength: 150
+        type: string
+      phone_country_code:
+        maxLength: 5
+        type: string
+      phone_number:
+        maxLength: 20
+        type: string
+    required:
+    - name
+    - phone_country_code
+    - phone_number
+    type: object
+  customer.Response:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      phone_country_code:
+        type: string
+      phone_number:
+        type: string
+      updated_at:
+        type: string
+    type: object
   delivery.CreateDeliverySettingRequest:
     properties:
       description:
@@ -103,6 +134,18 @@ definitions:
       updatedAt:
         type: string
     type: object
+  domains.OrderStatus:
+    enum:
+    - Pending
+    - Confirmed
+    - Completed
+    - Cancelled
+    type: string
+    x-enum-varnames:
+    - OrderStatusPending
+    - OrderStatusConfirmed
+    - OrderStatusCompleted
+    - OrderStatusCancelled
   domains.Roles:
     properties:
       createdAt:
@@ -218,6 +261,129 @@ definitions:
       data: {}
       success:
         type: boolean
+    type: object
+  order.CreateOrderProductRequest:
+    properties:
+      product_id:
+        type: string
+      quantity:
+        minimum: 1
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  order.CreateOrderRequest:
+    properties:
+      customer_name:
+        maxLength: 150
+        type: string
+      delivery_sub_group_name:
+        type: string
+      phone_country_code:
+        maxLength: 5
+        type: string
+      phone_number:
+        maxLength: 20
+        type: string
+      postal_code:
+        maxLength: 20
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/order.CreateOrderProductRequest'
+        minItems: 1
+        type: array
+      street_address:
+        maxLength: 100
+        type: string
+    required:
+    - customer_name
+    - delivery_sub_group_name
+    - phone_country_code
+    - phone_number
+    - postal_code
+    - products
+    - street_address
+    type: object
+  order.CustomerDetailResponse:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      phone_country_code:
+        type: string
+      phone_number:
+        type: string
+    type: object
+  order.DetailResponse:
+    properties:
+      created_at:
+        type: string
+      customer:
+        $ref: '#/definitions/order.CustomerDetailResponse'
+      delivery_name:
+        type: string
+      delivery_sub_group_name:
+        type: string
+      id:
+        type: integer
+      order_status:
+        type: string
+      payment:
+        $ref: '#/definitions/order.PaymentDetailResponse'
+      postal_code:
+        type: string
+      products:
+        items:
+          $ref: '#/definitions/order.ProductDetailResponse'
+        type: array
+      street_address:
+        type: string
+      total_price:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  order.PaymentDetailResponse:
+    properties:
+      id:
+        type: string
+      payment_method:
+        type: string
+      payment_status:
+        type: string
+      total_price:
+        type: number
+    type: object
+  order.ProductDetailResponse:
+    properties:
+      id:
+        type: integer
+      price:
+        type: number
+      product_id:
+        type: string
+      product_name:
+        type: string
+      quantity:
+        type: integer
+      total_price:
+        type: number
+    type: object
+  order.UpdateOrderStatusRequest:
+    properties:
+      status:
+        allOf:
+        - $ref: '#/definitions/domains.OrderStatus'
+        enum:
+        - Pending
+        - Confirmed
+        - Completed
+        - Cancelled
+    required:
+    - status
     type: object
   pagination.Response:
     properties:
@@ -955,6 +1121,130 @@ paths:
       - BearerAuth: []
       tags:
       - Auth
+  /client/{client_id}/customers:
+    get:
+      description: Ambil semua customer dengan pagination
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Customer
+    post:
+      consumes:
+      - application/json
+      description: Buat customer baru. Jika nomor HP sudah terdaftar, kembalikan data
+        customer yang ada.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create Customer Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/customer.CreateCustomerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/customer.Response'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Customer
+  /client/{client_id}/customers/{customer_id}:
+    get:
+      description: Ambil detail customer berdasarkan ID
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Customer ID
+        in: path
+        name: customer_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/customer.Response'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Customer
   /client/{client_id}/delivery-availability-settings:
     get:
       description: Ambil semua pengaturan ketersediaan delivery beserta nama delivery
@@ -1351,6 +1641,179 @@ paths:
       - BearerAuth: []
       tags:
       - Delivery Setting
+  /client/{client_id}/orders:
+    get:
+      description: Ambil semua order dengan pagination
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Order
+    post:
+      consumes:
+      - application/json
+      description: Buat order baru. Customer dicek berdasarkan phone number — jika
+        sudah ada, data customer lama dipakai. Jika belum ada, customer baru dibuat.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create Order Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/order.CreateOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/order.DetailResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Order
+  /client/{client_id}/orders/{order_id}:
+    get:
+      description: Ambil detail order beserta customer, produk, dan payment
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Order ID
+        in: path
+        name: order_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/order.DetailResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Order
+  /client/{client_id}/orders/{order_id}/status:
+    patch:
+      consumes:
+      - application/json
+      description: Update status order (Pending/Confirmed/Completed/Cancelled)
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Order ID
+        in: path
+        name: order_id
+        required: true
+        type: integer
+      - description: Update Order Status Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/order.UpdateOrderStatusRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Order
   /client/{client_id}/product-categories:
     get:
       description: Ambil semua kategori produk, filter berdasarkan visibility
@@ -1631,9 +2094,9 @@ paths:
         in: formData
         name: description
         type: string
-      - description: Delivery ID (UUID)
+      - description: Delivery Sub Group Name (UUID)
         in: formData
-        name: delivery_id
+        name: delivery_sub_group_name
         required: true
         type: string
       - description: Stok habis
