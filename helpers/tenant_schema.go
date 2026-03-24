@@ -1,9 +1,12 @@
 package helpers
 
 import (
+	"backend/models/repositories"
 	_ "embed"
+	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -56,6 +59,19 @@ func DropTenantSchema(db *gorm.DB, schemaName string) error {
 		}
 	}
 	return nil
+}
+
+func GetSchema(db *gorm.DB, userRepo repositories.UsersRepo, clientID uuid.UUID) (string, error) {
+	user, err := userRepo.GetByUserId(db, clientID)
+	if err != nil {
+		return "", fmt.Errorf("user not found: %w", err)
+	}
+
+	if user.TenantSchema == nil {
+		return "", fmt.Errorf("schema empty")
+	}
+
+	return *user.TenantSchema, nil
 }
 
 func splitStatements(sql string) []string {

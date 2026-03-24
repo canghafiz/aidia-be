@@ -18,7 +18,7 @@ import (
 // @title           AI-Dia API
 // @version         1.0
 // @description     REST API for AI-Dia application
-// @host            data.ai-dia.com
+// @host            localhost:8005
 // @BasePath        /api/v1
 // @securityDefinitions.apiKey BearerAuth
 // @in              header

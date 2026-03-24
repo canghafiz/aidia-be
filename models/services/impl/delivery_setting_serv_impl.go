@@ -36,11 +36,7 @@ func NewDeliverySettingServImpl(
 }
 
 func (serv *DeliverySettingServImpl) getSchema(userID uuid.UUID) (string, error) {
-	user, err := serv.UserRepo.GetByUserId(serv.Db, userID)
-	if err != nil {
-		return "", fmt.Errorf("user not found")
-	}
-	return user.Username, nil
+	return helpers.GetSchema(serv.Db, serv.UserRepo, userID)
 }
 
 func (serv *DeliverySettingServImpl) checkClientRole(userID uuid.UUID) error {

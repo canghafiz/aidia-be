@@ -176,6 +176,21 @@ func NewRouter(r Router) *Router {
 			orderGroup.GET("/:order_id", r.Dependency.OrderCont.GetByID)
 			orderGroup.PATCH("/:order_id/status", r.Dependency.OrderCont.UpdateStatus)
 		}
+
+		// Order Payment
+		orderPaymentGroup := generalGroup.Group("client/:client_id/order-payments").Use(middleware)
+		{
+			orderPaymentGroup.GET("", r.Dependency.OrderPaymentCont.GetAll)
+			orderPaymentGroup.GET("/:payment_id", r.Dependency.OrderPaymentCont.GetByID)
+			orderPaymentGroup.PATCH("/:payment_id/status", r.Dependency.OrderPaymentCont.UpdateStatus)
+		}
+
+		kitchenGroup := generalGroup.Group("client/:client_id/kitchen-display").Use(middleware)
+		{
+			kitchenGroup.GET("", r.Dependency.KitchenOrderCont.GetDisplay)
+			kitchenGroup.GET("/stream", r.Dependency.KitchenOrderCont.Stream)
+			kitchenGroup.PATCH("/:kitchen_id/status", r.Dependency.KitchenOrderCont.UpdateStatus)
+		}
 	}
 
 	return &Router{

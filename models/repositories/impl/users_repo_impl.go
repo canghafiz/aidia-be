@@ -149,7 +149,7 @@ func (repo *UserRepoImpl) GetByUserId(db *gorm.DB, userID uuid.UUID) (*domains.U
 func (repo *UserRepoImpl) UpdateTenantSchema(db *gorm.DB, user domains.Users) error {
 	err := db.Model(&domains.Users{}).
 		Where("user_id = ?", user.UserID).
-		Update("tenant_schema", user.Username).Error
+		Update("tenant_schema", user.TenantSchema).Error
 	if err != nil {
 		return err
 	}

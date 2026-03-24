@@ -27,6 +27,16 @@ func (repo *ProductCategoryRepoImpl) Update(db *gorm.DB, schema string, category
 		}).Error
 }
 
+func (repo *ProductCategoryRepoImpl) GetByName(db *gorm.DB, schema string, name string) (*domains.ProductCategory, error) {
+	var category domains.ProductCategory
+	if err := db.Table(schema+".product_category").
+		Where("name = ?", name).
+		First(&category).Error; err != nil {
+		return nil, err
+	}
+	return &category, nil
+}
+
 func (repo *ProductCategoryRepoImpl) GetAll(db *gorm.DB, schema string, isVisible bool) ([]domains.ProductCategory, error) {
 	var categories []domains.ProductCategory
 	if err := db.Table(schema+".product_category").

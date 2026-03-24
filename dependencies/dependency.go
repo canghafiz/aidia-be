@@ -29,6 +29,8 @@ type Dependency struct {
 	ProductCont                     controllers.ProductCont
 	CustomerCont                    controllers.CustomerCont
 	OrderCont                       controllers.OrderCont
+	OrderPaymentCont                controllers.OrderPaymentCont
+	KitchenOrderCont                controllers.KitchenOrderCont
 }
 
 func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *Dependency {
@@ -47,6 +49,8 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	productRepo := impl.NewProductRepoImpl()
 	customerRepo := impl.NewCustomerRepoImpl()
 	orderRepo := impl.NewOrderRepoImpl()
+	orderPaymentRepo := impl.NewOrderPaymentRepoImpl()
+	kitchenOrderRepo := impl.NewKitchenOrderRepoImpl()
 
 	// Serv
 	userServ := implServ.NewUsersServImpl(db, validator, userRepo, jwtKey)
@@ -63,6 +67,8 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	productServ := implServ.NewProductServImpl(db, validator, userRepo, productRepo, deliverySettingRepo, fileServ)
 	customerServ := implServ.NewCustomerServImpl(db, validator, userRepo, customerRepo, jwtKey)
 	orderServ := implServ.NewOrderServImpl(db, jwtKey, validator, userRepo, customerRepo, orderRepo, productRepo, deliverySettingRepo)
+	orderPaymentServ := implServ.NewOrderPaymentServImpl(db, jwtKey, validator, userRepo, orderPaymentRepo)
+	kitchenOrderServ := implServ.NewKitchenOrderServImpl(db, jwtKey, validator, userRepo, kitchenOrderRepo)
 
 	return &Dependency{
 		JwtKey: jwtKey,
@@ -82,5 +88,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		ProductCont:                     implCont.NewProductContImpl(productServ),
 		CustomerCont:                    implCont.NewCustomerContImpl(customerServ),
 		OrderCont:                       implCont.NewOrderContImpl(orderServ),
+		OrderPaymentCont:                implCont.NewOrderPaymentContImpl(orderPaymentServ),
+		KitchenOrderCont:                implCont.NewKitchenOrderContImpl(kitchenOrderServ, userRepo, db),
 	}
 }

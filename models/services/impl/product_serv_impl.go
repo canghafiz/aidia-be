@@ -45,11 +45,7 @@ func NewProductServImpl(
 }
 
 func (serv *ProductServImpl) getSchema(userID uuid.UUID) (string, error) {
-	user, err := serv.UserRepo.GetByUserId(serv.Db, userID)
-	if err != nil {
-		return "", fmt.Errorf("user not found")
-	}
-	return user.Username, nil
+	return helpers.GetSchema(serv.Db, serv.UserRepo, userID)
 }
 
 func (serv *ProductServImpl) checkClientRole(userID uuid.UUID) error {
@@ -176,7 +172,7 @@ func (serv *ProductServImpl) Update(userID uuid.UUID, productID uuid.UUID, reque
 		return err
 	}
 
-	_, err = serv.ProductRepo.GetByID(serv.Db, schema, productID)
+	existingProduct, err := serv.ProductRepo.GetByID(serv.Db, schema, productID)
 	if err != nil {
 		return fmt.Errorf("product not found")
 	}
@@ -255,6 +251,15 @@ func (serv *ProductServImpl) Update(userID uuid.UUID, productID uuid.UUID, reque
 		tx.Rollback()
 		serv.rollbackFiles(uploadedFiles)
 		return fmt.Errorf("failed to commit transaction")
+	}
+
+	// Hapus file lama dari storage setelah commit berhasil
+	if len(images) > 0 {
+		for _, img := range existingProduct.Images {
+			if errDel := serv.FileServ.DeleteFile(img.Image); errDel != nil {
+				log.Printf("[FileServ].DeleteFile old image error: %v", errDel)
+			}
+		}
 	}
 
 	return nil

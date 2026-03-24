@@ -20,10 +20,15 @@ func NewScheduler(db *gorm.DB) *Scheduler {
 }
 
 func (s *Scheduler) Start() {
-	// Jalan setiap hari jam 00:00
 	_, err := s.cron.AddFunc("0 0 * * *", s.expireTenantPlans)
 	if err != nil {
 		log.Printf("[Scheduler] failed to add expireTenantPlans job: %v", err)
+		return
+	}
+
+	_, err = s.cron.AddFunc("*/30 * * * *", s.expireOrders)
+	if err != nil {
+		log.Printf("[Scheduler] failed to add expireOrders job: %v", err)
 		return
 	}
 
@@ -46,4 +51,16 @@ func (s *Scheduler) expireTenantPlans() {
 	}
 
 	log.Printf("[Scheduler] expireTenantPlans done, rows affected: %d", result.RowsAffected)
+}
+
+func (s *Scheduler) expireOrders() {
+	log.Println("[Scheduler] running expireOrders")
+
+	result := s.db.Exec("SELECT fn_expire_orders()")
+	if result.Error != nil {
+		log.Printf("[Scheduler] expireOrders error: %v", result.Error)
+		return
+	}
+
+	log.Println("[Scheduler] expireOrders done")
 }

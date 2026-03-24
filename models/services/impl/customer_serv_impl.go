@@ -28,11 +28,7 @@ func NewCustomerServImpl(db *gorm.DB, validator *validator.Validate, userRepo re
 }
 
 func (serv *CustomerServImpl) getSchema(clientID uuid.UUID) (string, error) {
-	user, err := serv.UserRepo.GetByUserId(serv.Db, clientID)
-	if err != nil {
-		return "", fmt.Errorf("user not found")
-	}
-	return user.Username, nil
+	return helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
 }
 
 func (serv *CustomerServImpl) checkClientRole(clientID uuid.UUID) error {

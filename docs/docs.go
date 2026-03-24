@@ -1220,6 +1220,368 @@ const docTemplate = `{
                 }
             }
         },
+        "/client/{client_id}/kitchen-display": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ambil semua order di kitchen display berdasarkan status",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Kitchen Display"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/kitchen_order.KitchenDisplayResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/kitchen-display/stream": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Subscribe realtime kitchen display via Server-Sent Events",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "Kitchen Display"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
+        "/client/{client_id}/kitchen-display/{kitchen_id}/status": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update status kitchen order (new_order/cooking/packing/ready)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Kitchen Display"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Kitchen Order ID",
+                        "name": "kitchen_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update Kitchen Status Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/kitchen_order.UpdateKitchenStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/order-payments": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ambil semua order payment dengan pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Order Payment"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/pagination.Response"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/order-payments/{payment_id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ambil detail order payment berdasarkan ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Order Payment"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment ID",
+                        "name": "payment_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/order_payment.OrderPaymentResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/order-payments/{payment_id}/status": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update status order payment",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Order Payment"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment ID",
+                        "name": "payment_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update Payment Status Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/order_payment.UpdatePaymentStatusRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/client/{client_id}/orders": {
             "get": {
                 "security": [
@@ -2145,8 +2507,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Delivery ID (UUID)",
-                        "name": "delivery_id",
+                        "description": "Delivery Sub Group Name (UUID)",
+                        "name": "delivery_sub_group_name",
                         "in": "formData",
                         "required": true
                     },
@@ -3932,6 +4294,21 @@ const docTemplate = `{
                 }
             }
         },
+        "domains.KitchenStatus": {
+            "type": "string",
+            "enum": [
+                "new_order",
+                "cooking",
+                "packing",
+                "ready"
+            ],
+            "x-enum-varnames": [
+                "KitchenStatusNewOrder",
+                "KitchenStatusCooking",
+                "KitchenStatusPacking",
+                "KitchenStatusReady"
+            ]
+        },
         "domains.OrderStatus": {
             "type": "string",
             "enum": [
@@ -3945,6 +4322,23 @@ const docTemplate = `{
                 "OrderStatusConfirmed",
                 "OrderStatusCompleted",
                 "OrderStatusCancelled"
+            ]
+        },
+        "domains.PaymentStatus": {
+            "type": "string",
+            "enum": [
+                "Unpaid",
+                "Confirming_Payment",
+                "Paid",
+                "Refunded",
+                "Voided"
+            ],
+            "x-enum-varnames": [
+                "PaymentStatusUnpaid",
+                "PaymentStatusConfirmingPayment",
+                "PaymentStatusPaid",
+                "PaymentStatusRefunded",
+                "PaymentStatusVoided"
             ]
         },
         "domains.Roles": {
@@ -4131,6 +4525,125 @@ const docTemplate = `{
                 }
             }
         },
+        "kitchen_order.CustomerResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "phone_country_code": {
+                    "type": "string"
+                },
+                "phone_number": {
+                    "type": "string"
+                }
+            }
+        },
+        "kitchen_order.KitchenDisplayResponse": {
+            "type": "object",
+            "properties": {
+                "cooking": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/kitchen_order.KitchenOrderResponse"
+                    }
+                },
+                "new_order": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/kitchen_order.KitchenOrderResponse"
+                    }
+                },
+                "packing": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/kitchen_order.KitchenOrderResponse"
+                    }
+                },
+                "ready": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/kitchen_order.KitchenOrderResponse"
+                    }
+                }
+            }
+        },
+        "kitchen_order.KitchenOrderResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "customer": {
+                    "$ref": "#/definitions/kitchen_order.CustomerResponse"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "order_id": {
+                    "type": "integer"
+                },
+                "products": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/kitchen_order.OrderProductResponse"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "street_address": {
+                    "type": "string"
+                },
+                "total_price": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "kitchen_order.OrderProductResponse": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "product_id": {
+                    "type": "string"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "total_price": {
+                    "type": "number"
+                }
+            }
+        },
+        "kitchen_order.UpdateKitchenStatusRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "enum": [
+                        "new_order",
+                        "cooking",
+                        "packing",
+                        "ready"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domains.KitchenStatus"
+                        }
+                    ]
+                }
+            }
+        },
         "order.CreateOrderProductRequest": {
             "type": "object",
             "required": [
@@ -4308,6 +4821,57 @@ const docTemplate = `{
                     "allOf": [
                         {
                             "$ref": "#/definitions/domains.OrderStatus"
+                        }
+                    ]
+                }
+            }
+        },
+        "order_payment.OrderPaymentResponse": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "expire_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "order_id": {
+                    "type": "integer"
+                },
+                "payment_method": {
+                    "type": "string"
+                },
+                "payment_status": {
+                    "type": "string"
+                },
+                "total_price": {
+                    "type": "number"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "order_payment.UpdatePaymentStatusRequest": {
+            "type": "object",
+            "required": [
+                "status"
+            ],
+            "properties": {
+                "status": {
+                    "enum": [
+                        "Unpaid",
+                        "Confirming_Payment",
+                        "Paid",
+                        "Refunded",
+                        "Voided"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domains.PaymentStatus"
                         }
                     ]
                 }
@@ -4722,9 +5286,6 @@ const docTemplate = `{
                 "business_name": {
                     "type": "string"
                 },
-                "id": {
-                    "type": "string"
-                },
                 "phone": {
                     "type": "string"
                 }
@@ -4984,9 +5545,6 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "role": {
-                    "type": "string"
-                },
-                "tenant_id": {
                     "type": "string"
                 }
             }

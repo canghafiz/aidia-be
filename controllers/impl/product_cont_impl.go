@@ -89,7 +89,7 @@ func (cont *ProductContImpl) Create(ctx *gin.Context) {
 // @Param        price            formData  number    true  "Harga jual"
 // @Param        original_price   formData  number    true  "Harga asli"
 // @Param        description      formData  string    false "Deskripsi produk"
-// @Param        delivery_id      formData  string    true  "Delivery ID (UUID)"
+// @Param        delivery_sub_group_name      formData  string    true  "Delivery Sub Group Name (UUID)"
 // @Param        is_out_of_stock  formData  boolean   false "Stok habis"
 // @Param        is_active        formData  boolean   false "Status aktif"
 // @Param        category_ids     formData  []string  false "Category IDs (UUID)"
@@ -263,9 +263,9 @@ func parseCreateProductForm(ctx *gin.Context) (*reqProduct.CreateProductRequest,
 	if err != nil {
 		return nil, fmt.Errorf("invalid original_price value")
 	}
-	deliveryID, err := uuid.Parse(ctx.PostForm("delivery_id"))
+	deliveryID, err := uuid.Parse(ctx.PostForm("delivery_sub_group_name"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid delivery_id value")
+		return nil, fmt.Errorf("invalid delivery_sub_group_name value")
 	}
 
 	var description *string
@@ -304,9 +304,9 @@ func parseUpdateProductForm(ctx *gin.Context) (*reqProduct.UpdateProductRequest,
 	if err != nil {
 		return nil, fmt.Errorf("invalid original_price value")
 	}
-	deliveryID, err := uuid.Parse(ctx.PostForm("delivery_id"))
+	deliveryID, err := uuid.Parse(ctx.PostForm("delivery_sub_group_name"))
 	if err != nil {
-		return nil, fmt.Errorf("invalid delivery_id value")
+		return nil, fmt.Errorf("invalid delivery_sub_group_name value")
 	}
 
 	var description *string

@@ -13,7 +13,7 @@ type CreateProductRequest struct {
 	Price         float64     `json:"price"          validate:"required,min=0"`
 	OriginalPrice float64     `json:"original_price" validate:"required,min=0"`
 	Description   *string     `json:"description"    validate:"omitempty"`
-	DeliveryID    uuid.UUID   `json:"delivery_id"    validate:"required"`
+	DeliveryID    uuid.UUID   `json:"delivery_sub_group_name"    validate:"required"`
 	IsOutOfStock  bool        `json:"is_out_of_stock"`
 	CategoryIDs   []uuid.UUID `json:"category_ids"   validate:"omitempty"`
 }
@@ -25,7 +25,7 @@ type UpdateProductRequest struct {
 	Price         float64     `json:"price"          validate:"required,min=0"`
 	OriginalPrice float64     `json:"original_price" validate:"required,min=0"`
 	Description   *string     `json:"description"    validate:"omitempty"`
-	DeliveryID    uuid.UUID   `json:"delivery_id"    validate:"required"`
+	DeliveryID    uuid.UUID   `json:"delivery_sub_group_name"    validate:"required"`
 	IsOutOfStock  bool        `json:"is_out_of_stock"`
 	IsActive      bool        `json:"is_active"`
 	CategoryIDs   []uuid.UUID `json:"category_ids"   validate:"omitempty"`

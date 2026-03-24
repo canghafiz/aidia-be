@@ -3,6 +3,7 @@ package impl
 import (
 	"backend/models/domains"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -10,13 +11,6 @@ type OrderPaymentRepoImpl struct{}
 
 func NewOrderPaymentRepoImpl() *OrderPaymentRepoImpl {
 	return &OrderPaymentRepoImpl{}
-}
-
-func (repo *OrderPaymentRepoImpl) Create(db *gorm.DB, schema string, payment domains.OrderPayment) (*domains.OrderPayment, error) {
-	if err := db.Table(schema + ".order_payments").Create(&payment).Error; err != nil {
-		return nil, err
-	}
-	return &payment, nil
 }
 
 func (repo *OrderPaymentRepoImpl) GetAll(db *gorm.DB, schema string, pagination domains.Pagination) ([]domains.OrderPayment, int, error) {
@@ -38,17 +32,34 @@ func (repo *OrderPaymentRepoImpl) GetAll(db *gorm.DB, schema string, pagination 
 	return payments, int(total), nil
 }
 
-func (repo *OrderPaymentRepoImpl) GetByOrderID(db *gorm.DB, schema string, orderID int) (*domains.OrderPayment, error) {
+func (repo *OrderPaymentRepoImpl) GetByID(db *gorm.DB, schema string, id uuid.UUID) (*domains.OrderPayment, error) {
 	var payment domains.OrderPayment
-	if err := db.Raw(`SELECT * FROM `+schema+`.order_payments WHERE order_id = ?`, orderID).
+	if err := db.Raw(`
+		SELECT * FROM `+schema+`.order_payments WHERE id = ?`, id).
 		Scan(&payment).Error; err != nil {
 		return nil, err
+	}
+	if payment.ID == uuid.Nil {
+		return nil, gorm.ErrRecordNotFound
 	}
 	return &payment, nil
 }
 
-func (repo *OrderPaymentRepoImpl) UpdateStatus(db *gorm.DB, schema string, orderID int, status domains.PaymentStatus) error {
+func (repo *OrderPaymentRepoImpl) GetByOrderID(db *gorm.DB, schema string, orderID int) (*domains.OrderPayment, error) {
+	var payment domains.OrderPayment
+	if err := db.Raw(`
+		SELECT * FROM `+schema+`.order_payments WHERE order_id = ?`, orderID).
+		Scan(&payment).Error; err != nil {
+		return nil, err
+	}
+	if payment.ID == uuid.Nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &payment, nil
+}
+
+func (repo *OrderPaymentRepoImpl) UpdateStatus(db *gorm.DB, schema string, id uuid.UUID, status domains.PaymentStatus) error {
 	return db.Table(schema+".order_payments").
-		Where("order_id = ?", orderID).
+		Where("id = ?", id).
 		Update("payment_status", status).Error
 }

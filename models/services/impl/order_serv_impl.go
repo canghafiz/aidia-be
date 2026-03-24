@@ -58,11 +58,7 @@ func (serv *OrderServImpl) checkRole(accessToken string) error {
 }
 
 func (serv *OrderServImpl) getSchema(clientID uuid.UUID) (string, error) {
-	user, err := serv.UserRepo.GetByUserId(serv.Db, clientID)
-	if err != nil {
-		return "", fmt.Errorf("user not found")
-	}
-	return user.Username, nil
+	return helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
 }
 
 func (serv *OrderServImpl) getDeliveryName(schema, subGroupName string) string {

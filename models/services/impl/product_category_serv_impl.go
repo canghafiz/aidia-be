@@ -26,11 +26,7 @@ func NewProductCategoryServImpl(db *gorm.DB, jwtKey string, validator *validator
 }
 
 func (serv *ProductCategoryServImpl) getSchema(userID uuid.UUID) (string, error) {
-	user, err := serv.UserRepo.GetByUserId(serv.Db, userID)
-	if err != nil {
-		return "", fmt.Errorf("user not found")
-	}
-	return user.Username, nil
+	return helpers.GetSchema(serv.Db, serv.UserRepo, userID)
 }
 
 func (serv *ProductCategoryServImpl) checkClientRole(userID uuid.UUID) error {
@@ -56,6 +52,12 @@ func (serv *ProductCategoryServImpl) Create(userID uuid.UUID, request product_ca
 	schema, err := serv.getSchema(userID)
 	if err != nil {
 		return err
+	}
+
+	// Cek nama sudah ada
+	existing, _ := serv.ProductCategoryRepo.GetByName(serv.Db, schema, request.Name)
+	if existing != nil {
+		return fmt.Errorf("category name already exist")
 	}
 
 	domain := product_category.CreateProductCategoryToDomain(request)
@@ -85,6 +87,12 @@ func (serv *ProductCategoryServImpl) Update(userID uuid.UUID, id uuid.UUID, requ
 	if err != nil {
 		log.Printf("[ProductCategoryRepo].GetById error: %v", err)
 		return fmt.Errorf("product category not found")
+	}
+
+	// Cek nama sudah ada tapi bukan milik ID yang sama
+	existing, _ := serv.ProductCategoryRepo.GetByName(serv.Db, schema, request.Name)
+	if existing != nil && existing.ID != id {
+		return fmt.Errorf("category name already exist")
 	}
 
 	domain := product_category.UpdateProductCategoryToDomain(request)

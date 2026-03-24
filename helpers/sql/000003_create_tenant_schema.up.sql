@@ -287,3 +287,78 @@ WHERE group_name = 'notification'
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
     ('integration', 'Stripe Client', 'stripe-client-secret-key', '{stripe-client-secret-key}'),
     ('integration', 'Stripe Client', 'stripe-client-webhook-secret', '{stripe-client-webhook-secret}');
+
+-- ============================================================
+-- Kitchen Order
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS :schema_name.kitchen_order (
+                                                          id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id   INTEGER     NOT NULL UNIQUE,
+    status     VARCHAR(50) NOT NULL DEFAULT 'new_order',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_kitchen_order
+    FOREIGN KEY (order_id) REFERENCES :schema_name.orders (id)
+    ON DELETE CASCADE
+    );
+
+CREATE INDEX idx_kitchen_order_status ON :schema_name.kitchen_order (status);
+CREATE INDEX idx_kitchen_order_created_at ON :schema_name.kitchen_order (created_at);
+
+-- ============================================================
+-- Trigger: insert kitchen_order saat payment Paid + order Confirmed
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION :schema_name.fn_insert_kitchen_order()
+    RETURNS TRIGGER AS $$
+DECLARE
+    v_order_status VARCHAR(50);
+BEGIN
+    IF NEW.payment_status = 'Paid' AND OLD.payment_status != 'Paid' THEN
+        SELECT status INTO v_order_status
+        FROM :schema_name.orders
+        WHERE id = NEW.order_id;
+
+        IF v_order_status = 'Confirmed' THEN
+            INSERT INTO :schema_name.kitchen_order (order_id, status)
+            VALUES (NEW.order_id, 'new_order')
+            ON CONFLICT (order_id) DO NOTHING;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_insert_kitchen_order
+    AFTER UPDATE ON :schema_name.order_payments
+    FOR EACH ROW
+EXECUTE FUNCTION :schema_name.fn_insert_kitchen_order();
+
+CREATE OR REPLACE FUNCTION :schema_name.fn_insert_kitchen_order_on_confirmed()
+    RETURNS TRIGGER AS $$
+DECLARE
+    v_payment_status VARCHAR(50);
+BEGIN
+    IF NEW.status = 'Confirmed' AND OLD.status != 'Confirmed' THEN
+        SELECT payment_status INTO v_payment_status
+        FROM :schema_name.order_payments
+        WHERE order_id = NEW.id;
+
+        IF v_payment_status = 'Paid' THEN
+            INSERT INTO :schema_name.kitchen_order (order_id, status)
+            VALUES (NEW.id, 'new_order')
+            ON CONFLICT (order_id) DO NOTHING;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_insert_kitchen_order_on_confirmed
+    AFTER UPDATE ON :schema_name.orders
+    FOR EACH ROW
+EXECUTE FUNCTION :schema_name.fn_insert_kitchen_order_on_confirmed();

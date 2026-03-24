@@ -180,7 +180,7 @@ func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID u
 		return nil, fmt.Errorf("failed to generate invoice number")
 	}
 	invoiceNumber := helpers.GenerateInvoiceNumber(sequence + 1)
-	dueDate := time.Now().Add(7 * 24 * time.Hour)
+	dueDate := time.Now().Add(1 * 24 * time.Hour)
 
 	tenantPlan, err := serv.TenantPlanRepo.Create(tx, domains.TenantPlan{
 		TenantID:       tenant.TenantID,

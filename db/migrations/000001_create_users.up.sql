@@ -267,3 +267,40 @@ CREATE TRIGGER trg_insert_tenant_usage_on_paid
     AFTER UPDATE ON public.tenant_plan
     FOR EACH ROW
 EXECUTE FUNCTION fn_insert_tenant_usage_on_paid();
+
+-- ============================================================
+-- Function: expire orders yang payment-nya sudah lewat expire_at
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION fn_expire_orders()
+    RETURNS void AS $$
+DECLARE
+    v_schema TEXT;
+BEGIN
+    FOR v_schema IN
+        SELECT u.username
+        FROM public.users u
+                 JOIN public.user_roles ur ON ur.user_id = u.user_id
+                 JOIN public.roles r ON r.id = ur.role_id
+        WHERE r.name = 'Client'
+          AND u.tenant_schema IS NOT NULL
+        LOOP
+            EXECUTE format('
+            UPDATE %I.order_payments
+            SET payment_status = ''Voided'', updated_at = NOW()
+            WHERE payment_status = ''Unpaid''
+            AND expire_at < NOW()
+        ', v_schema);
+
+            EXECUTE format('
+            UPDATE %I.orders
+            SET status = ''Cancelled'', updated_at = NOW()
+            WHERE status = ''Pending''
+            AND id IN (
+                SELECT order_id FROM %I.order_payments
+                WHERE payment_status = ''Voided''
+            )
+        ', v_schema, v_schema);
+        END LOOP;
+END;
+$$ LANGUAGE plpgsql;

@@ -3,14 +3,12 @@ package user
 import "backend/models/domains"
 
 type BusinessProfileResponse struct {
-	ID           string `json:"id"`
 	BusinessName string `json:"business_name"`
 	Address      string `json:"address"`
 	Phone        string `json:"phone"`
 }
 
 type TenantResponse struct {
-	TenantID        string                   `json:"tenant_id"`
 	Role            string                   `json:"role"`
 	IsActive        bool                     `json:"is_active"`
 	BusinessProfile *BusinessProfileResponse `json:"business_profile,omitempty"`
@@ -38,14 +36,12 @@ func ToResponse(user domains.Users, role string) Response {
 
 	if user.Tenant != nil {
 		tenantResp := &TenantResponse{
-			TenantID: user.Tenant.TenantID.String(),
 			Role:     user.Tenant.Role,
 			IsActive: user.Tenant.IsActive,
 		}
 
 		if user.Tenant.BusinessProfile != nil {
 			tenantResp.BusinessProfile = &BusinessProfileResponse{
-				ID:           user.Tenant.BusinessProfile.ID.String(),
 				BusinessName: user.Tenant.BusinessProfile.BusinessName,
 				Address:      user.Tenant.BusinessProfile.Address,
 				Phone:        user.Tenant.BusinessProfile.Phone,

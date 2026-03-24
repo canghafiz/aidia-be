@@ -9,7 +9,7 @@ import (
 )
 
 func OpenConnection(username string, password string, host string, port string, name string) *gorm.DB {
-	dsn := "host=" + host + " user=" + username + " password=" + password + " dbname=" + name + " port=" + port + " sslmode=disable TimeZone=Asia/Jakarta"
+	dsn := "host=" + host + " user=" + username + " password=" + password + " dbname=" + name + " port=" + port + " sslmode=disable TimeZone=UTC"
 
 	dialect := postgres.Open(dsn)
 
