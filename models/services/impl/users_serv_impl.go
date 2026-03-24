@@ -181,32 +181,27 @@ func (serv *UsersServImpl) CreateSuperAdmin(request user.CreateSuperAdminRequest
 }
 
 func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUserRequest) error {
-	// Check role
+	// ── Phase 1: Semua validasi sebelum apapun ──
 	role, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin"})
 	if err != nil || !ok {
 		return err
 	}
 
-	errValidator := helpers.ErrValidator(request, serv.Validator)
-	if errValidator != nil {
-		return errValidator
+	if err := helpers.ErrValidator(request, serv.Validator); err != nil {
+		return err
 	}
 
-	// ── Cek duplikat sebelum apapun ──
-	existingUsername, _ := serv.UserRepo.FindByUsernameOrEmail(serv.Db, request.Username)
-	if existingUsername != nil {
+	if existing, _ := serv.UserRepo.FindByUsernameOrEmail(serv.Db, request.Username); existing != nil {
 		return fmt.Errorf("user already exists")
 	}
 
-	existingEmail, _ := serv.UserRepo.FindByUsernameOrEmail(serv.Db, request.Email)
-	if existingEmail != nil {
+	if existing, _ := serv.UserRepo.FindByUsernameOrEmail(serv.Db, request.Email); existing != nil {
 		return fmt.Errorf("user already exists")
 	}
 
 	model := user.CreateUserRequestToDomain(request)
 	model.IsActive = *role == "SuperAdmin"
 
-	// ── Cek role untuk Client sebelum transaction ──
 	var roleData domains.Roles
 	if len(model.UserRoles) > 0 {
 		if err := serv.Db.Where("id = ?", model.UserRoles[0].RoleID).First(&roleData).Error; err != nil {
@@ -214,122 +209,109 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 		}
 	}
 
-	// ── DDL diluar transaction (CREATE SCHEMA tidak bisa rollback) ──
 	isClient := roleData.Name == "Client"
-	if isClient {
-		if err := helpers.CreateTenantSchema(serv.Db, model.Username); err != nil {
-			log.Printf("[CreateUser] CreateTenantSchema error: %v", err)
-			return fmt.Errorf("failed to create tenant schema")
-		}
-	}
 
-	// Helper untuk drop schema + log kalau gagal
+	// Normalize schema — lowercase, spasi dan strip jadi underscore
+	normalizedSchema := helpers.NormalizeSchema(model.Username)
+
 	dropSchema := func() {
 		if isClient {
-			if err := helpers.DropTenantSchema(serv.Db, model.Username); err != nil {
+			if err := helpers.DropTenantSchema(serv.Db, normalizedSchema); err != nil {
 				log.Printf("[CreateUser] DropTenantSchema cleanup error: %v", err)
 			}
 		}
 	}
 
-	// ── Transaction untuk DML ──
+	// ── Phase 2: DDL dulu (CreateTenantSchema) ──
+	if isClient {
+		if err := helpers.CreateTenantSchema(serv.Db, normalizedSchema); err != nil {
+			log.Printf("[CreateUser] CreateTenantSchema error: %v", err)
+			return fmt.Errorf("failed to create tenant schema")
+		}
+	}
+
+	// ── Phase 3: DML dalam transaction ──
 	tx := serv.Db.Begin()
 	if tx.Error != nil {
 		dropSchema()
 		return fmt.Errorf("failed to start transaction")
 	}
 
-	// Kalau panic, rollback + cleanup schema
+	rollback := func() {
+		tx.Rollback()
+		dropSchema()
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
-			tx.Rollback()
-			dropSchema()
+			rollback()
 		}
 	}()
 
-	// 1. Create user
 	if err := serv.UserRepo.Create(tx, model); err != nil {
-		tx.Rollback()
+		rollback()
 		log.Printf("[CreateUser] Create error: %v", err)
-		dropSchema()
 		if isDuplicateError(err) {
 			return fmt.Errorf("user already exists")
 		}
 		return fmt.Errorf("failed to create user")
 	}
 
-	// 2. Get saved user to get UserID
 	saved, err := serv.UserRepo.FindByUsernameOrEmail(tx, model.Username)
 	if err != nil || saved == nil {
-		tx.Rollback()
-		dropSchema()
+		rollback()
 		return fmt.Errorf("failed to retrieve created user")
 	}
 
-	// 3. Assign role
 	if err := serv.UserRepo.AssignRole(tx, saved.UserID, roleData.Name); err != nil {
-		tx.Rollback()
+		rollback()
 		log.Printf("[CreateUser] AssignRole error: %v", err)
-		dropSchema()
 		return fmt.Errorf("failed to assign role")
 	}
 
-	// 4. Client-only: tenant_schema, tenant, business_profile
 	if isClient {
-		saved.TenantSchema = &saved.Username
+		// Simpan normalized schema ke tenant_schema field
+		saved.TenantSchema = &normalizedSchema
 		if err := serv.UserRepo.UpdateTenantSchema(tx, *saved); err != nil {
-			tx.Rollback()
+			rollback()
 			log.Printf("[CreateUser] UpdateTenantSchema error: %v", err)
-			dropSchema()
 			return fmt.Errorf("failed to update tenant schema")
 		}
 
-		tenant := domains.Tenant{
-			UserID:   saved.UserID,
-			Role:     "owner",
-			IsActive: true,
-		}
+		tenant := domains.Tenant{UserID: saved.UserID, Role: "owner", IsActive: true}
 		if err := tx.Create(&tenant).Error; err != nil {
-			tx.Rollback()
+			rollback()
 			log.Printf("[CreateUser] Create tenant error: %v", err)
-			dropSchema()
 			return fmt.Errorf("failed to create tenant")
 		}
 
-		bp := domains.BusinessProfile{
-			TenantId: tenant.TenantID,
-		}
+		bp := domains.BusinessProfile{TenantId: tenant.TenantID}
 		if model.Tenant != nil && model.Tenant.BusinessProfile != nil {
 			bp.BusinessName = model.Tenant.BusinessProfile.BusinessName
 			bp.Phone = model.Tenant.BusinessProfile.Phone
 			bp.Address = model.Tenant.BusinessProfile.Address
 		}
 		if err := tx.Create(&bp).Error; err != nil {
-			tx.Rollback()
+			rollback()
 			log.Printf("[CreateUser] Create business_profile error: %v", err)
-			dropSchema()
 			return fmt.Errorf("failed to create business profile")
 		}
 	}
 
-	// 5. Create approval log hanya Admin role
 	if *role == "Admin" {
 		action := "Not Approved"
-		logs := domains.TenantApprovalLogs{
+		if err := serv.UserRepo.CreateApprovalLogs(tx, domains.TenantApprovalLogs{
 			UserID: saved.UserID,
 			Action: &action,
-		}
-		if err := serv.UserRepo.CreateApprovalLogs(tx, logs); err != nil {
-			tx.Rollback()
+		}); err != nil {
+			rollback()
 			log.Printf("[CreateUser] CreateApprovalLogs error: %v", err)
-			dropSchema()
 			return fmt.Errorf("failed to create approval logs")
 		}
 	}
 
-	// 6. Commit
 	if err := tx.Commit().Error; err != nil {
-		dropSchema()
+		rollback()
 		return fmt.Errorf("failed to commit transaction")
 	}
 
