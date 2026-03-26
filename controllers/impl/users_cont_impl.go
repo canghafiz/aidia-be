@@ -435,6 +435,39 @@ func (cont *UsersContImpl) GetUsers(context *gin.Context) {
 	}
 }
 
+// GetClients    @Summary      Get All Users role Client
+// @Description  Ambil semua user role client dengan pagination
+// @Tags         Users
+// @Produce      json
+// @Security     BearerAuth
+// @Param        page   query     int false "Page"
+// @Param        limit  query     int false "Limit"
+// @Success      200    {object}  helpers.ApiResponse{data=pagination.Response}
+// @Failure      401    {object}  helpers.ApiResponse
+// @Router       /users/clients [get]
+func (cont *UsersContImpl) GetClients(context *gin.Context) {
+	pg := domains.ParsePagination(context)
+
+	result, err := cont.UsersService.GetClients(pg)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	response := helpers.ApiResponse{
+		Success: true,
+		Code:    200,
+		Data:    result,
+	}
+
+	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
+
+	if errResponse != nil {
+		exceptions.ErrorHandler(context, errResponse)
+		return
+	}
+}
+
 // FilterUsers @Summary      Filter Users
 // @Description  Filter user berdasarkan name, email, dan role dengan pagination
 // @Tags         Users

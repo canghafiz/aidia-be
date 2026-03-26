@@ -2,6 +2,9 @@ basePath: /api/v1
 definitions:
   customer.CreateCustomerRequest:
     properties:
+      account_type:
+        maxLength: 20
+        type: string
       name:
         maxLength: 150
         type: string
@@ -12,12 +15,15 @@ definitions:
         maxLength: 20
         type: string
     required:
+    - account_type
     - name
     - phone_country_code
     - phone_number
     type: object
   customer.Response:
     properties:
+      account_type:
+        type: string
       created_at:
         type: string
       id:
@@ -3504,6 +3510,38 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Users
+  /users/clients:
+    get:
+      description: Ambil semua user role client dengan pagination
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/pagination.Response'
+              type: object
         "401":
           description: Unauthorized
           schema:

@@ -38,12 +38,13 @@ func NewRouter(r Router) *Router {
 
 		usersGroup := generalGroup.Group("users")
 		{
+			usersGroup.GET("", r.Dependency.UsersCont.GetUsers)
+			usersGroup.GET("/clients", r.Dependency.UsersCont.GetClients)
 			usersGroup.GET("/filter", r.Dependency.UsersCont.FilterUsers)
 			usersGroup.GET("/:user_id", r.Dependency.UsersCont.GetByUserId)
 
 			middleware := usersGroup.Use(middleware)
 			{
-				usersGroup.GET("", r.Dependency.UsersCont.GetUsers)
 				middleware.POST("", r.Dependency.UsersCont.CreateUser)
 				middleware.PUT("/:user_id/client", r.Dependency.UsersCont.UpdateProfileClient)
 				middleware.PUT("/:user_id/non-client", r.Dependency.UsersCont.UpdateProfileNonClient)

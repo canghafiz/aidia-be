@@ -253,6 +253,31 @@ func (repo *UserRepoImpl) GetUsers(db *gorm.DB, exceptId string, pagination doma
 	return users, int(total), nil
 }
 
+func (repo *UserRepoImpl) GetUsersRoleClient(db *gorm.DB, pagination domains.Pagination) ([]domains.Users, int, error) {
+	var users []domains.Users
+	var total int64
+
+	query := db.Model(&domains.Users{}).
+		Joins("JOIN user_roles ur ON ur.user_id = users.user_id").
+		Joins("JOIN roles r ON r.id = ur.role_id").
+		Where("r.name != ?", "Client")
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if err := query.
+		Preload("Tenant.BusinessProfile").
+		Preload("UserRoles.Role").
+		Limit(pagination.Limit).
+		Offset(pagination.Offset()).
+		Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, int(total), nil
+}
+
 func (repo *UserRepoImpl) FilterUsers(db *gorm.DB, name, email, role string, pagination domains.Pagination) ([]domains.Users, int, error) {
 	var users []domains.Users
 	var total int64

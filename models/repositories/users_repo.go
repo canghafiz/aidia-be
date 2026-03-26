@@ -19,6 +19,7 @@ type UsersRepo interface {
 	UpdateTenantSchema(db *gorm.DB, user domains.Users) error
 	Update(db *gorm.DB, user domains.Users) error
 	GetUsers(db *gorm.DB, exceptId string, pagination domains.Pagination) ([]domains.Users, int, error)
+	GetUsersRoleClient(db *gorm.DB, pagination domains.Pagination) ([]domains.Users, int, error)
 	FilterUsers(db *gorm.DB, name, email, role string, pagination domains.Pagination) ([]domains.Users, int, error)
 	UpdateUserStatusActive(db *gorm.DB, users domains.Users) error
 	CreateApprovalLogs(db *gorm.DB, model domains.TenantApprovalLogs) error

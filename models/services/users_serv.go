@@ -21,6 +21,7 @@ type UsersServ interface {
 	EditUserData(accessToken string, userID uuid.UUID, request user.EditUserDataRequest) error
 	GetByUserId(userID uuid.UUID) (*res.SingleResponse, error)
 	GetUsers(accessToken string, pagination domains.Pagination) (pagination.Response, error)
+	GetClients(pagination domains.Pagination) (pagination.Response, error)
 	FilterUsers(name, email, role string, pagination domains.Pagination) (pagination.Response, error)
 	DeleteByUserId(accessToken string, userID uuid.UUID) error
 }

@@ -14,6 +14,7 @@ type UsersCont interface {
 	EditUserData(context *gin.Context)
 	GetByUserId(context *gin.Context)
 	GetUsers(context *gin.Context)
+	GetClients(context *gin.Context)
 	FilterUsers(context *gin.Context)
 	DeleteByUserId(context *gin.Context)
 }

@@ -442,6 +442,21 @@ func (serv *UsersServImpl) GetUsers(accessToken string, pg domains.Pagination) (
 	), nil
 }
 
+func (serv *UsersServImpl) GetClients(pg domains.Pagination) (pagination.Response, error) {
+	users, total, err := serv.UserRepo.GetUsersRoleClient(serv.Db, pg)
+	if err != nil {
+		log.Printf("[GetUsers] error: %v", err)
+		return pagination.Response{}, fmt.Errorf("failed to get users")
+	}
+
+	return pagination.ToResponse(
+		res.ToResponsesList(users),
+		total,
+		pg.Page,
+		pg.Limit,
+	), nil
+}
+
 func (serv *UsersServImpl) FilterUsers(name, email, role string, pg domains.Pagination) (pagination.Response, error) {
 	users, total, err := serv.UserRepo.FilterUsers(serv.Db, name, email, role, pg)
 	if err != nil {

@@ -3752,6 +3752,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/clients": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ambil semua user role client dengan pagination",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/pagination.Response"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/users/filter": {
             "get": {
                 "security": [
@@ -4097,11 +4153,16 @@ const docTemplate = `{
         "customer.CreateCustomerRequest": {
             "type": "object",
             "required": [
+                "account_type",
                 "name",
                 "phone_country_code",
                 "phone_number"
             ],
             "properties": {
+                "account_type": {
+                    "type": "string",
+                    "maxLength": 20
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 150
@@ -4119,6 +4180,9 @@ const docTemplate = `{
         "customer.Response": {
             "type": "object",
             "properties": {
+                "account_type": {
+                    "type": "string"
+                },
                 "created_at": {
                     "type": "string"
                 },
