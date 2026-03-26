@@ -10,6 +10,7 @@ type Response struct {
 	Name             string    `json:"name"`
 	PhoneCountryCode string    `json:"phone_country_code"`
 	PhoneNumber      string    `json:"phone_number"`
+	AccountType      string    `json:"account_type"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }
@@ -20,6 +21,7 @@ func ToResponse(c domains.Customer) Response {
 		Name:             c.Name,
 		PhoneCountryCode: c.PhoneCountryCode,
 		PhoneNumber:      c.PhoneNumber,
+		AccountType:      c.AccountType,
 		CreatedAt:        c.CreatedAt,
 		UpdatedAt:        c.UpdatedAt,
 	}

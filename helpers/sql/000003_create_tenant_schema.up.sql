@@ -150,12 +150,17 @@ CREATE TABLE IF NOT EXISTS :schema_name.product_category_dto (
 -- ============================================================
 -- Customer
 -- ============================================================
+CREATE TYPE :schema_name.customer_account AS ENUM (
+                                                  'Telegram',
+                                                  'Whatsapp'
+                                              );
 
 CREATE TABLE IF NOT EXISTS :schema_name.customer (
                                                      id                 SERIAL       PRIMARY KEY,
                                                      name               VARCHAR(150) NOT NULL,
     phone_country_code VARCHAR(5)   NOT NULL,
     phone_number       VARCHAR(20)  NOT NULL,
+    account_type       :schema_name.customer_account  NOT NULL DEFAULT 'Telegram',
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     );
