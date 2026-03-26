@@ -260,7 +260,7 @@ func (repo *UserRepoImpl) GetUsersRoleClient(db *gorm.DB, pagination domains.Pag
 	query := db.Model(&domains.Users{}).
 		Joins("JOIN user_roles ur ON ur.user_id = users.user_id").
 		Joins("JOIN roles r ON r.id = ur.role_id").
-		Where("r.name == ?", "Client")
+		Where("r.name = ?", "Client")
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
