@@ -29,7 +29,6 @@ func NewProductContImpl(productServ services.ProductServ) *ProductContImpl {
 // @Security     BearerAuth
 // @Param        client_id        path      string    true  "Client ID"
 // @Param        name             formData  string    true  "Nama produk"
-// @Param        code             formData  string    true  "Kode produk"
 // @Param        weight           formData  number    true  "Berat produk"
 // @Param        price            formData  number    true  "Harga jual"
 // @Param        original_price   formData  number    true  "Harga asli"
@@ -84,7 +83,6 @@ func (cont *ProductContImpl) Create(ctx *gin.Context) {
 // @Param        client_id        path      string    true  "Client ID"
 // @Param        product_id       path      string    true  "Product ID"
 // @Param        name             formData  string    true  "Nama produk"
-// @Param        code             formData  string    true  "Kode produk"
 // @Param        weight           formData  number    true  "Berat produk"
 // @Param        price            formData  number    true  "Harga jual"
 // @Param        original_price   formData  number    true  "Harga asli"

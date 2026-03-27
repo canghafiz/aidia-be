@@ -20,6 +20,8 @@ func normalizeSchema(username string) string {
 	schema := strings.ToLower(username)
 	schema = strings.ReplaceAll(schema, " ", "_")
 	schema = strings.ReplaceAll(schema, "-", "_")
+	schema = strings.ReplaceAll(schema, "@", "_")
+	schema = strings.ReplaceAll(schema, ".", "_")
 	return schema
 }
 

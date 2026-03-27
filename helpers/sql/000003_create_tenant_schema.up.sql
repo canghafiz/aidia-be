@@ -294,7 +294,7 @@ SELECT group_name, sub_group_name, name, value
 FROM public.setting
 WHERE group_name = 'notification'
    OR (group_name = 'integration' AND sub_group_name = 'Telegram')
-    ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (sub_group_name, name) DO NOTHING;
 
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
     ('integration', 'Stripe Client', 'stripe-client-secret-key', '{stripe-client-secret-key}'),

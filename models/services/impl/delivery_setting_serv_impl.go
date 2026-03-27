@@ -8,6 +8,7 @@ import (
 	resDelivery "backend/models/responses/delivery_setting"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
@@ -62,6 +63,17 @@ func (serv *DeliverySettingServImpl) Create(userID uuid.UUID, request reqDeliver
 	schema, err := serv.getSchema(userID)
 	if err != nil {
 		return err
+	}
+
+	// Check if delivery name already exists GLOBALLY (across all sub_groups)
+	allSettings, err := serv.DeliverySettingRepo.GetAll(serv.Db, schema)
+	if err == nil {
+		// Check all settings for duplicate name
+		for _, s := range allSettings {
+			if s.Name == "name" && strings.EqualFold(s.Value, request.Name) {
+				return fmt.Errorf("delivery name already exist")
+			}
+		}
 	}
 
 	settings := reqDelivery.CreateDeliverySettingToDomain(request)

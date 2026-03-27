@@ -294,6 +294,46 @@ definitions:
       success:
         type: boolean
     type: object
+  impl.Chat:
+    properties:
+      id:
+        type: integer
+      type:
+        type: string
+      username:
+        type: string
+    type: object
+  impl.TelegramWebhookRequest:
+    properties:
+      message:
+        properties:
+          chat:
+            $ref: '#/definitions/impl.Chat'
+          date:
+            type: integer
+          from:
+            $ref: '#/definitions/impl.User'
+          message_id:
+            type: integer
+          text:
+            type: string
+        type: object
+      update_id:
+        type: integer
+    type: object
+  impl.User:
+    properties:
+      first_name:
+        type: string
+      id:
+        type: integer
+      is_bot:
+        type: boolean
+      last_name:
+        type: string
+      username:
+        type: string
+    type: object
   kitchen_order.CustomerResponse:
     properties:
       id:
@@ -1037,6 +1077,41 @@ info:
   title: AI-Dia API
   version: "1.0"
 paths:
+  /api/v1/webhook/telegram/{schema}:
+    post:
+      consumes:
+      - application/json
+      description: Receive incoming Telegram messages
+      parameters:
+      - description: Tenant Schema
+        in: path
+        name: schema
+        required: true
+        type: string
+      - description: Telegram Webhook Payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/impl.TelegramWebhookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Telegram Webhook
+      tags:
+      - Telegram
   /approvals:
     get:
       description: Ambil semua approval logs dengan pagination (Hanya untuk role SuperAdmin)
@@ -1259,6 +1334,140 @@ paths:
       - BearerAuth: []
       tags:
       - Auth
+  /client/{client_id}/chats:
+    get:
+      description: Get list of all conversations with pagination
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get all conversations
+      tags:
+      - Chat
+  /client/{client_id}/chats/{guest_id}:
+    get:
+      description: Get detail of a conversation with messages
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Guest ID
+        in: path
+        name: guest_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get conversation detail
+      tags:
+      - Chat
+  /client/{client_id}/chats/{guest_id}/messages:
+    post:
+      consumes:
+      - application/json
+      description: Send manual reply to a guest (for manual mode)
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Guest ID
+        in: path
+        name: guest_id
+        required: true
+        type: string
+      - description: Request body with message field
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Send manual reply to guest
+      tags:
+      - Chat
+  /client/{client_id}/chats/stream:
+    get:
+      description: Subscribe to real-time chat updates via Server-Sent Events
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - text/event-stream
+      responses: {}
+      security:
+      - BearerAuth: []
+      summary: Chat real-time stream (SSE)
+      tags:
+      - Chat
   /client/{client_id}/customers:
     get:
       description: Ambil semua customer dengan pagination
@@ -2430,11 +2639,6 @@ paths:
         name: name
         required: true
         type: string
-      - description: Kode produk
-        in: formData
-        name: code
-        required: true
-        type: string
       - description: Berat produk
         in: formData
         name: weight
@@ -2590,11 +2794,6 @@ paths:
         name: name
         required: true
         type: string
-      - description: Kode produk
-        in: formData
-        name: code
-        required: true
-        type: string
       - description: Berat produk
         in: formData
         name: weight
@@ -2661,6 +2860,43 @@ paths:
       - BearerAuth: []
       tags:
       - Product
+  /client/{client_id}/telegram/bot-token:
+    patch:
+      consumes:
+      - application/json
+      description: Update Telegram bot token and auto-register webhook
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Bot token request
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Update Telegram Bot Token
+      tags:
+      - Settings
   /payments/client/checkout/{order_id}:
     post:
       description: '[BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik
