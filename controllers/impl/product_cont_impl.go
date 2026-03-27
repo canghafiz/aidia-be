@@ -280,7 +280,6 @@ func parseCreateProductForm(ctx *gin.Context) (*reqProduct.CreateProductRequest,
 
 	return &reqProduct.CreateProductRequest{
 		Name:          ctx.PostForm("name"),
-		Code:          ctx.PostForm("code"),
 		Weight:        weight,
 		Price:         price,
 		OriginalPrice: originalPrice,
@@ -321,7 +320,6 @@ func parseUpdateProductForm(ctx *gin.Context) (*reqProduct.UpdateProductRequest,
 
 	return &reqProduct.UpdateProductRequest{
 		Name:          ctx.PostForm("name"),
-		Code:          ctx.PostForm("code"),
 		Weight:        weight,
 		Price:         price,
 		OriginalPrice: originalPrice,

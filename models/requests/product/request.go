@@ -8,7 +8,6 @@ import (
 
 type CreateProductRequest struct {
 	Name          string      `json:"name"           validate:"required,max=150"`
-	Code          string      `json:"code"           validate:"required,max=30"`
 	Weight        float64     `json:"weight"         validate:"required,min=0"`
 	Price         float64     `json:"price"          validate:"required,min=0"`
 	OriginalPrice float64     `json:"original_price" validate:"required,min=0"`
@@ -20,7 +19,6 @@ type CreateProductRequest struct {
 
 type UpdateProductRequest struct {
 	Name          string      `json:"name"           validate:"required,max=150"`
-	Code          string      `json:"code"           validate:"required,max=30"`
 	Weight        float64     `json:"weight"         validate:"required,min=0"`
 	Price         float64     `json:"price"          validate:"required,min=0"`
 	OriginalPrice float64     `json:"original_price" validate:"required,min=0"`
@@ -34,7 +32,6 @@ type UpdateProductRequest struct {
 func CreateProductToDomain(req CreateProductRequest) domains.Product {
 	return domains.Product{
 		Name:          req.Name,
-		Code:          req.Code,
 		Weight:        req.Weight,
 		Price:         req.Price,
 		OriginalPrice: req.OriginalPrice,
@@ -48,7 +45,6 @@ func CreateProductToDomain(req CreateProductRequest) domains.Product {
 func UpdateProductToDomain(req UpdateProductRequest) domains.Product {
 	return domains.Product{
 		Name:          req.Name,
-		Code:          req.Code,
 		Weight:        req.Weight,
 		Price:         req.Price,
 		OriginalPrice: req.OriginalPrice,

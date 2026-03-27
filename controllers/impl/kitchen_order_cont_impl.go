@@ -88,7 +88,13 @@ func (cont *KitchenOrderContImpl) Stream(ctx *gin.Context) {
 		exceptions.ErrorHandler(ctx, fmt.Errorf("user not found"))
 		return
 	}
-	schema := user.Username
+	
+	// Gunakan TenantSchema yang sudah normalized
+	if user.TenantSchema == nil || *user.TenantSchema == "" {
+		exceptions.ErrorHandler(ctx, fmt.Errorf("tenant schema not found"))
+		return
+	}
+	schema := helpers.NormalizeSchema(*user.TenantSchema)
 
 	// Ambil data awal
 	result, err := cont.KitchenOrderServ.GetDisplay(accessToken, clientID)

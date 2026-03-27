@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"backend/hub"
 	"fmt"
 	"strings"
 	"time"
@@ -72,4 +73,8 @@ func ParseUUID(context *gin.Context, param string) (uuid.UUID, error) {
 		return uuid.Nil, fmt.Errorf("invalid %s", param)
 	}
 	return id, nil
+}
+
+func GetChatHub() *hub.ChatHub {
+	return hub.GetChatHub()
 }

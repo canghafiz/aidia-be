@@ -6,4 +6,5 @@ type SettingCont interface {
 	GetNotification(context *gin.Context)
 	GetIntegration(context *gin.Context)
 	UpdateBySubgroupName(context *gin.Context)
+	UpdateTelegramBotToken(context *gin.Context)
 }

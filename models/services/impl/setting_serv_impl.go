@@ -4,12 +4,14 @@ import (
 	"backend/helpers"
 	"backend/models/domains"
 	"backend/models/repositories"
+	"backend/models/repositories/impl"
 	req "backend/models/requests/setting"
 	"backend/models/responses/setting"
 	"fmt"
 	"log"
 	"os"
 
+	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v81"
 	stripewebhookendpoint "github.com/stripe/stripe-go/v81/webhookendpoint"
 	"gorm.io/gorm"
@@ -199,4 +201,51 @@ func (serv *SettingServImpl) registerStripeWebhook(secretKey, schema string) (st
 	log.Printf("[SettingServ] stripe webhook registered: %s, url: %s", endpoint.ID, webhookURL)
 
 	return endpoint.Secret, nil
+}
+
+// UpdateTelegramBotToken updates Telegram bot token and registers webhook
+func (serv *SettingServImpl) UpdateTelegramBotToken(accessToken string, clientID uuid.UUID, botToken string) error {
+	// Validate token
+	_, err := helpers.DecodeJWT(accessToken, serv.JwtKey)
+	if err != nil {
+		return fmt.Errorf("invalid token")
+	}
+
+	// Get user to find schema
+	userRepo := impl.NewUserRepoImpl()
+	user, err := userRepo.GetByUserId(serv.Db, clientID)
+	if err != nil || user == nil {
+		return fmt.Errorf("user not found")
+	}
+
+	if user.TenantSchema == nil || *user.TenantSchema == "" {
+		return fmt.Errorf("tenant schema not found")
+	}
+
+	schema := helpers.NormalizeSchema(*user.TenantSchema)
+
+	// Update setting
+	setting := domains.Setting{
+		GroupName:    "integration",
+		SubgroupName: "Telegram",
+		Name:         "telegram-bot-token",
+		Value:        botToken,
+	}
+
+	err = serv.SettingRepo.Create(serv.Db, schema, setting)
+	if err != nil {
+		return fmt.Errorf("failed to update setting: %w", err)
+	}
+
+	// Register webhook to Telegram API
+	webhookURL := fmt.Sprintf("%s/api/v1/webhook/telegram/%s", os.Getenv("APP_URL"), schema)
+	tgClient := helpers.NewTelegramClient(botToken)
+	_, err = tgClient.SetWebhook(webhookURL)
+	if err != nil {
+		return fmt.Errorf("failed to register Telegram webhook: %w", err)
+	}
+
+	log.Printf("[SettingServ] Telegram webhook registered: %s", webhookURL)
+
+	return nil
 }

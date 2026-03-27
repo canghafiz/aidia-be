@@ -67,10 +67,27 @@ func (serv *DeliverySettingServImpl) Create(userID uuid.UUID, request reqDeliver
 	settings := reqDelivery.CreateDeliverySettingToDomain(request)
 	if err := serv.DeliverySettingRepo.Create(serv.Db, schema, settings); err != nil {
 		log.Printf("[DeliverySettingRepo].Create error: %v", err)
+		// Check if error is duplicate constraint
+		if err.Error() != "" && contains(err.Error(), "duplicate key") {
+			return fmt.Errorf("delivery name already exist")
+		}
 		return fmt.Errorf("failed to create delivery setting")
 	}
 
 	return nil
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func (serv *DeliverySettingServImpl) Update(userID uuid.UUID, subGroupName string, request reqDelivery.UpdateDeliverySettingRequest) error {

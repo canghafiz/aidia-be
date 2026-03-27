@@ -9,53 +9,60 @@ CREATE SCHEMA IF NOT EXISTS :schema_name;
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS :schema_name.guest (
-                                                  id           UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    identity     VARCHAR(100) NOT NULL,
-    username     VARCHAR(100),
-    phone        VARCHAR(30),
-    name         VARCHAR(150),
-    sosmed       JSONB,
-    ai_thread_id VARCHAR(150),
-    is_take_over BOOLEAN      NOT NULL DEFAULT FALSE,
-    is_read      BOOLEAN      NOT NULL DEFAULT FALSE,
-    is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
-    created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-    );
+    id                    UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id             UUID,
+    identity              VARCHAR(100) NOT NULL,
+    username              VARCHAR(100),
+    phone                 VARCHAR(30),
+    name                  VARCHAR(150),
+    sosmed                JSONB,
+    ai_thread_id          VARCHAR(150),
+    is_take_over          BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_read               BOOLEAN      NOT NULL DEFAULT FALSE,
+    is_active             BOOLEAN      NOT NULL DEFAULT TRUE,
+    telegram_chat_id      VARCHAR(100),
+    telegram_username     VARCHAR(100),
+    last_message_at       TIMESTAMPTZ,
+    conversation_state    JSONB DEFAULT '{}'::jsonb,
+    created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
 
-CREATE INDEX idx_guest_identity      ON :schema_name.guest (identity);
-CREATE INDEX idx_guest_active_read   ON :schema_name.guest (is_active, is_read);
-CREATE INDEX idx_guest_ai_thread_id  ON :schema_name.guest (ai_thread_id);
-CREATE INDEX idx_guest_created_at    ON :schema_name.guest (created_at);
+CREATE INDEX idx_guest_identity ON :schema_name.guest (identity);
+CREATE INDEX idx_guest_active_read ON :schema_name.guest (is_active, is_read);
+CREATE INDEX idx_guest_ai_thread_id ON :schema_name.guest (ai_thread_id);
+CREATE INDEX idx_guest_created_at ON :schema_name.guest (created_at);
+CREATE INDEX idx_guest_telegram_chat ON :schema_name.guest (telegram_chat_id);
+CREATE INDEX idx_guest_last_message ON :schema_name.guest (last_message_at);
+CREATE INDEX idx_guest_tenant ON :schema_name.guest (tenant_id);
 
 -- ============================================================
 -- Guest Message
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS :schema_name.guest_message (
-                                                          id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    guest_id          UUID        NOT NULL,
-    role              VARCHAR(30) NOT NULL,
-    type              VARCHAR(30),
-    message           TEXT,
-    ai_run_id         VARCHAR(150),
-    ai_run_status     VARCHAR(50),
-    ai_run_last_error TEXT,
-    is_human          BOOLEAN     NOT NULL DEFAULT FALSE,
-    token_usage       INTEGER     DEFAULT 0,
-    is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    guest_id               UUID        NOT NULL,
+    role                   VARCHAR(30) NOT NULL,
+    type                   VARCHAR(30),
+    message                TEXT,
+    is_human               BOOLEAN     NOT NULL DEFAULT FALSE,
+    is_active              BOOLEAN     NOT NULL DEFAULT TRUE,
+    telegram_message_id    INTEGER,
+    platform               VARCHAR(30) NOT NULL DEFAULT 'telegram',
+    session_id             VARCHAR(100),
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     CONSTRAINT fk_guest_message_guest
     FOREIGN KEY (guest_id) REFERENCES :schema_name.guest (id)
     ON DELETE RESTRICT
-    );
+);
 
 CREATE INDEX idx_guest_msg_guest_created ON :schema_name.guest_message (guest_id, created_at);
-CREATE INDEX idx_guest_msg_ai_run_id     ON :schema_name.guest_message (ai_run_id);
-CREATE INDEX idx_guest_msg_ai_run_status ON :schema_name.guest_message (ai_run_status);
-CREATE INDEX idx_guest_msg_is_active     ON :schema_name.guest_message (is_active);
+CREATE INDEX idx_guest_msg_telegram_id ON :schema_name.guest_message (telegram_message_id);
+CREATE INDEX idx_guest_msg_platform ON :schema_name.guest_message (platform);
+CREATE INDEX idx_guest_msg_session ON :schema_name.guest_message (session_id);
 
 -- ============================================================
 -- Guest Message Log
@@ -84,7 +91,6 @@ CREATE INDEX idx_guest_msg_log_guest_created ON :schema_name.guest_message_log (
 CREATE TABLE IF NOT EXISTS :schema_name.product (
                                                     id         UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     name       VARCHAR(150)  NOT NULL,
-    code       VARCHAR(30) NOT NULL,
     weight     NUMERIC(15,2) NOT NULL DEFAULT 0,
     price      NUMERIC(15,2) NOT NULL DEFAULT 0,
     original_price NUMERIC(15,2) NOT NULL DEFAULT 0,
@@ -275,10 +281,11 @@ CREATE TABLE IF NOT EXISTS :schema_name.setting (
                                               id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
                                               group_name     VARCHAR(100) NOT NULL,
                                               sub_group_name VARCHAR(100) NOT NULL,
-                                              name           VARCHAR(100) NOT NULL UNIQUE,
+                                              name           VARCHAR(100) NOT NULL,
                                               value          TEXT,
                                               created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                                              updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                                              updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                                              CONSTRAINT uq_setting_subgroup_name UNIQUE (sub_group_name, name)
 );
 
 -- Seed from public.setting as template

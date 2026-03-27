@@ -25,7 +25,6 @@ func (repo *ProductRepoImpl) Update(db *gorm.DB, schema string, product domains.
 		Where("id = ?", product.ID).
 		Updates(map[string]interface{}{
 			"name":            product.Name,
-			"code":            product.Code,
 			"weight":          product.Weight,
 			"price":           product.Price,
 			"original_price":  product.OriginalPrice,

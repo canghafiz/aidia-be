@@ -65,8 +65,22 @@ func (serv *UsersServImpl) Login(request user.LoginRequest) (*res.LoginResponse,
 		return nil, fmt.Errorf("password invalid")
 	}
 
-	// Generate access token (JWT)
-	accessToken, errJwt := helpers.GenerateJWT(serv.JwtKey, helpers.TokenDuration, res.ToResponse(*findUser, role))
+	// Generate access token (JWT) dengan claims lengkap
+	claims := map[string]interface{}{
+		"user_id":       findUser.UserID.String(),
+		"username":      findUser.Username,
+		"email":         findUser.Email,
+		"name":          findUser.Name,
+		"role":          role,
+		"tenant_schema": findUser.TenantSchema,
+	}
+
+	// Tambah tenant_id jika user adalah Client
+	if findUser.Tenant != nil && findUser.Tenant.TenantID != uuid.Nil {
+		claims["tenant_id"] = findUser.Tenant.TenantID.String()
+	}
+
+	accessToken, errJwt := helpers.GenerateJWT(serv.JwtKey, helpers.TokenDuration, claims)
 	if errJwt != nil {
 		return nil, errJwt
 	}

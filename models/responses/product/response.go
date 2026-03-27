@@ -28,7 +28,6 @@ type CategoryResponse struct {
 type Response struct {
 	ID            string             `json:"id"`
 	Name          string             `json:"name"`
-	Code          string             `json:"code"`
 	Weight        float64            `json:"weight"`
 	Price         float64            `json:"price"`
 	OriginalPrice float64            `json:"original_price"`
@@ -82,7 +81,6 @@ func ToProductResponse(
 	return Response{
 		ID:            p.ID.String(),
 		Name:          p.Name,
-		Code:          p.Code,
 		Weight:        p.Weight,
 		Price:         p.Price,
 		OriginalPrice: p.OriginalPrice,

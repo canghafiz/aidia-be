@@ -38,6 +38,10 @@ INSERT INTO public.setting (group_name, sub_group_name, name, value) VALUES
 
 -- Integration: Telegram
 ('integration', 'Telegram', 'telegram-bot-token', '{telegram-bot-token}'),
+('integration', 'Telegram', 'bot-enabled', 'true'),
+('integration', 'Telegram', 'operational-hours', '{"monday":{"start":"08:00","end":"22:00"},"tuesday":{"start":"08:00","end":"22:00"},"wednesday":{"start":"08:00","end":"22:00"},"thursday":{"start":"08:00","end":"22:00"},"friday":{"start":"08:00","end":"22:00"},"saturday":{"start":"08:00","end":"22:00"},"sunday":{"start":"08:00","end":"22:00"}}'),
+('integration', 'Telegram', 'timezone', 'Asia/Jakarta'),
+('integration', 'Telegram', 'manual-mode', 'false'),
 
 -- Integration: Whatsapp
 ('integration', 'Whatsapp', 'whatsapp-token', '{whatsapp-token}'),

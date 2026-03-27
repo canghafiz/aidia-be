@@ -3,6 +3,7 @@ package impl
 import (
 	"backend/exceptions"
 	"backend/helpers"
+	"fmt"
 	req "backend/models/requests/setting"
 	"backend/models/services"
 
@@ -115,6 +116,62 @@ func (cont *SettingContImpl) UpdateBySubgroupName(context *gin.Context) {
 		Success: true,
 		Code:    200,
 		Data:    nil,
+	}
+
+	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
+	if errResponse != nil {
+		exceptions.ErrorHandler(context, errResponse)
+		return
+	}
+}
+
+// UpdateTelegramBotToken godoc
+// @Summary      Update Telegram Bot Token
+// @Description  Update Telegram bot token and auto-register webhook
+// @Tags         Settings
+// @Accept       json
+// @Produce      json
+// @Param        client_id  path  string  true  "Client ID"
+// @Param        request    body  object  true  "Bot token request"
+// @Success      200        {object}  helpers.ApiResponse
+// @Failure      400        {object}  helpers.ApiResponse
+// @Failure      401        {object}  helpers.ApiResponse
+// @Security     BearerAuth
+// @Router       /client/{client_id}/telegram/bot-token [patch]
+func (cont *SettingContImpl) UpdateTelegramBotToken(context *gin.Context) {
+	jwtToken := helpers.GetJwtToken(context)
+
+	clientID, err := helpers.ParseUUID(context, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	var request struct {
+		BotToken string `json:"bot_token" validate:"required"`
+	}
+
+	if err := helpers.ReadFromRequestBody(context, &request); err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	if request.BotToken == "" {
+		exceptions.ErrorHandler(context, fmt.Errorf("bot_token is required"))
+		return
+	}
+
+	// Update setting dan register webhook
+	err = cont.SettingServ.UpdateTelegramBotToken(jwtToken, clientID, request.BotToken)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	response := helpers.ApiResponse{
+		Success: true,
+		Code:    200,
+		Data:    map[string]string{"message": "Telegram bot token updated and webhook registered"},
 	}
 
 	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
