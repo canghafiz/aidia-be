@@ -2931,7 +2931,57 @@ const docTemplate = `{
                 }
             }
         },
-        "/payments/client/checkout/{order_id}": {
+        "/payments/client/webhook/{schema}": {
+            "post": {
+                "description": "[BELUM DIGUNAKAN] Endpoint untuk menerima event webhook dari Stripe per tenant. Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment Client"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant Schema",
+                        "name": "schema",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stripe Webhook Signature",
+                        "name": "Stripe-Signature",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/payments/client/{client_id}/checkout/{order_id}": {
             "post": {
                 "security": [
                     {
@@ -2946,6 +2996,13 @@ const docTemplate = `{
                     "Payment Client"
                 ],
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID (tenant UUID)",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Order ID",
@@ -2994,7 +3051,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/payments/client/invoices": {
+        "/payments/client/{client_id}/invoices": {
             "get": {
                 "security": [
                     {
@@ -3009,6 +3066,13 @@ const docTemplate = `{
                     "Payment Client"
                 ],
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID (tenant UUID)",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
                     {
                         "type": "integer",
                         "description": "Page",
@@ -3043,56 +3107,6 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/payments/client/webhook/{schema}": {
-            "post": {
-                "description": "[BELUM DIGUNAKAN] Endpoint untuk menerima event webhook dari Stripe per tenant. Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Payment Client"
-                ],
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Tenant Schema",
-                        "name": "schema",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Stripe Webhook Signature",
-                        "name": "Stripe-Signature",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -5095,6 +5109,7 @@ const docTemplate = `{
         "order.CreateOrderRequest": {
             "type": "object",
             "required": [
+                "account_type",
                 "customer_name",
                 "delivery_sub_group_name",
                 "phone_country_code",
@@ -5104,6 +5119,13 @@ const docTemplate = `{
                 "street_address"
             ],
             "properties": {
+                "account_type": {
+                    "type": "string",
+                    "enum": [
+                        "Telegram",
+                        "Whatsapp"
+                    ]
+                },
                 "customer_name": {
                     "type": "string",
                     "maxLength": 150

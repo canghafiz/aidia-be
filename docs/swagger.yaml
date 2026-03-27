@@ -424,6 +424,11 @@ definitions:
     type: object
   order.CreateOrderRequest:
     properties:
+      account_type:
+        enum:
+        - Telegram
+        - Whatsapp
+        type: string
       customer_name:
         maxLength: 150
         type: string
@@ -447,6 +452,7 @@ definitions:
         maxLength: 100
         type: string
     required:
+    - account_type
     - customer_name
     - delivery_sub_group_name
     - phone_country_code
@@ -2897,12 +2903,17 @@ paths:
       summary: Update Telegram Bot Token
       tags:
       - Settings
-  /payments/client/checkout/{order_id}:
+  /payments/client/{client_id}/checkout/{order_id}:
     post:
       description: '[BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik
         tenant (Stripe per tenant). Endpoint ini belum aktif digunakan karena fitur
         pembayaran order tenant masih dalam pengembangan.'
       parameters:
+      - description: Client ID (tenant UUID)
+        in: path
+        name: client_id
+        required: true
+        type: string
       - description: Order ID
         in: path
         name: order_id
@@ -2936,12 +2947,17 @@ paths:
       - BearerAuth: []
       tags:
       - Payment Client
-  /payments/client/invoices:
+  /payments/client/{client_id}/invoices:
     get:
       description: '[BELUM DIGUNAKAN] Ambil semua invoice order milik tenant yang
         sedang login dengan pagination. Endpoint ini belum aktif digunakan karena
         fitur pembayaran order tenant masih dalam pengembangan.'
       parameters:
+      - description: Client ID (tenant UUID)
+        in: path
+        name: client_id
+        required: true
+        type: string
       - description: Page
         in: query
         name: page
