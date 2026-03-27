@@ -192,6 +192,27 @@ func NewRouter(r Router) *Router {
 			kitchenGroup.GET("/stream", r.Dependency.KitchenOrderCont.Stream)
 			kitchenGroup.PATCH("/:kitchen_id/status", r.Dependency.KitchenOrderCont.UpdateStatus)
 		}
+
+		// Chat (Real-time conversations)
+		chatGroup := generalGroup.Group("client/:client_id/chats").Use(middleware)
+		{
+			chatGroup.GET("", r.Dependency.ChatCont.GetConversations)
+			chatGroup.GET("/stream", r.Dependency.ChatCont.Stream)
+			chatGroup.GET("/:guest_id", r.Dependency.ChatCont.GetConversationDetail)
+			chatGroup.POST("/:guest_id/messages", r.Dependency.ChatCont.SendManualReply)
+		}
+
+		// Telegram Bot Management
+		telegramGroup := generalGroup.Group("client/:client_id/telegram").Use(middleware)
+		{
+			telegramGroup.PATCH("/bot-token", r.Dependency.SettingCont.UpdateTelegramBotToken)
+		}
+
+		// Telegram Webhook (public - no middleware)
+		telegramWebhookGroup := generalGroup.Group("webhook/telegram")
+		{
+			telegramWebhookGroup.POST("/:schema", r.Dependency.TelegramCont.Webhook)
+		}
 	}
 
 	return &Router{

@@ -31,6 +31,8 @@ type Dependency struct {
 	OrderCont                       controllers.OrderCont
 	OrderPaymentCont                controllers.OrderPaymentCont
 	KitchenOrderCont                controllers.KitchenOrderCont
+	ChatCont                        controllers.ChatCont
+	TelegramCont                    controllers.TelegramCont
 }
 
 func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *Dependency {
@@ -51,8 +53,11 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	orderRepo := impl.NewOrderRepoImpl()
 	orderPaymentRepo := impl.NewOrderPaymentRepoImpl()
 	kitchenOrderRepo := impl.NewKitchenOrderRepoImpl()
+	guestRepo := impl.NewGuestRepoImpl()
+	guestMessageRepo := impl.NewGuestMessageRepoImpl()
 
 	// Serv
+	n8nServ := implServ.NewN8NServImpl()
 	userServ := implServ.NewUsersServImpl(db, validator, userRepo, jwtKey)
 	roleServ := implServ.NewRoleServImpl(db, roleRepo)
 	settingServ := implServ.NewSettingServImpl(db, jwtKey, settingRepo)
@@ -69,6 +74,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	orderServ := implServ.NewOrderServImpl(db, jwtKey, validator, userRepo, customerRepo, orderRepo, productRepo, deliverySettingRepo)
 	orderPaymentServ := implServ.NewOrderPaymentServImpl(db, jwtKey, validator, userRepo, orderPaymentRepo)
 	kitchenOrderServ := implServ.NewKitchenOrderServImpl(db, jwtKey, validator, userRepo, kitchenOrderRepo)
+	chatServ := implServ.NewChatServImpl(db, jwtKey, guestRepo, guestMessageRepo, userRepo)
 
 	return &Dependency{
 		JwtKey: jwtKey,
@@ -90,5 +96,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		OrderCont:                       implCont.NewOrderContImpl(orderServ),
 		OrderPaymentCont:                implCont.NewOrderPaymentContImpl(orderPaymentServ),
 		KitchenOrderCont:                implCont.NewKitchenOrderContImpl(kitchenOrderServ, userRepo, db),
+		ChatCont:                        implCont.NewChatContImpl(chatServ, guestRepo, userRepo, db, jwtKey),
+		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, n8nServ, db),
 	}
 }
