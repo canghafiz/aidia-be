@@ -27,11 +27,7 @@ WORKDIR /root/
 # Copy binary and migrations
 COPY --from=builder /app/main .
 COPY --from=builder /app/docs ./docs
-COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 COPY --from=builder /app/db/migrations ./db/migrations
-
-# Make migrate executable
-RUN chmod +x /usr/local/bin/migrate
 
 # Expose port
 EXPOSE ${APP_PORT}

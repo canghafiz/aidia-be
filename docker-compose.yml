@@ -5,12 +5,9 @@ services:
     env_file:
       - .env
     command: >
-      sh -c "migrate -database 'postgres://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable'
-      -path db/migrations up && ./main"
-
+      sh -c "apk add --no-cache wget && ./main"
     networks:
       - coolify
-
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.ai-dia.rule=Host(`data.ai-dia.com`)"
