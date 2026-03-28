@@ -43,7 +43,7 @@ func (serv *CustomerServImpl) checkClientRole(clientID uuid.UUID) error {
 }
 
 func (serv *CustomerServImpl) checkRole(accessToken string) error {
-	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin"})
+	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin", "Client"})
 	if err != nil || !ok {
 		return fmt.Errorf("access denied")
 	}

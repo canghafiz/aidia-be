@@ -50,7 +50,7 @@ func NewOrderServImpl(
 }
 
 func (serv *OrderServImpl) checkRole(accessToken string) error {
-	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin"})
+	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin", "Client"})
 	if err != nil || !ok {
 		return fmt.Errorf("access denied")
 	}
@@ -122,9 +122,10 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			customer, err = serv.CustomerRepo.Create(tx, schema, domains.Customer{
-				Name:             request.Name,
+				Name:             request.CustomerName,
 				PhoneCountryCode: request.PhoneCountryCode,
 				PhoneNumber:      request.PhoneNumber,
+				AccountType:      request.AccountType,
 			})
 			if err != nil {
 				tx.Rollback()
