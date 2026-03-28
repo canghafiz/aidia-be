@@ -1,7 +1,7 @@
 FROM golang:1.25-alpine AS builder
 WORKDIR /app
 
-# Install git (required for some Go modules)
+# Install git and build tools
 RUN apk add --no-cache git
 
 # Copy go mod files first for better caching
@@ -16,6 +16,9 @@ COPY . .
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./main.go
 
+# Install migrate tool
+RUN go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.17.1
+
 # Final image
 FROM alpine:latest
 
@@ -27,7 +30,11 @@ WORKDIR /root/
 # Copy binary and migrations
 COPY --from=builder /app/main .
 COPY --from=builder /app/docs ./docs
+COPY --from=builder /go/bin/migrate /usr/local/bin/migrate
 COPY --from=builder /app/db/migrations ./db/migrations
+
+# Make migrate executable
+RUN chmod +x /usr/local/bin/migrate
 
 # Expose port
 EXPOSE ${APP_PORT}
