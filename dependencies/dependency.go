@@ -63,7 +63,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	settingServ := implServ.NewSettingServImpl(db, jwtKey, settingRepo)
 	planServ := implServ.NewPlanServImpl(db, validator, planRepo, jwtKey)
 	approvalServ := implServ.NewApprovalServImpl(db, jwtKey, approvalRepo, userRepo)
-	paymentServ := implServ.NewPaymentServImpl(db, jwtKey, tenantPlanRepo, planRepo, tenantRepo, settingRepo)
+	paymentServ := implServ.NewPaymentServImpl(db, jwtKey, userRepo, tenantPlanRepo, planRepo, tenantRepo, settingRepo)
 	subsServ := implServ.NewSubsServImpl(db, jwtKey, tenantRepo, tenantUsageRepo)
 	productCategoryServ := implServ.NewProductCategoryServImpl(db, jwtKey, validator, userRepo, productCategoryRepo)
 	deliverySettingServ := implServ.NewDeliverySettingServImpl(db, validator, userRepo, deliverySettingRepo)
@@ -83,7 +83,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		UsersRepo:                       userRepo,
 		UsersCont:                       implCont.NewUsersContImpl(userServ),
 		RoleCont:                        implCont.NewRoleContImpl(roleServ),
-		SettingCont:                     implCont.NewSettingContImpl(settingServ),
+		SettingCont:                     implCont.NewSettingContImpl(settingServ, userRepo, db),
 		PlanCont:                        implCont.NewPlanContImpl(planServ),
 		ApprovalCont:                    implCont.NewApprovalCont(approvalServ),
 		PaymentCont:                     implCont.NewPaymentContImpl(paymentServ),
