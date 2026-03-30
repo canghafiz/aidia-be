@@ -17,7 +17,7 @@ type PaymentServ interface {
 	HandlePlatformWebhook(payload []byte, signature string) error
 
 	// CreateClientCheckout Client (Stripe per tenant) - tenant terima pembayaran dari customer
-	CreateClientCheckout(accessToken string, orderID uuid.UUID) (*paymentRes.CheckoutResponse, error)
-	GetClientInvoices(accessToken string, pg domains.Pagination) (*pagination.Response, error)
+	CreateClientCheckout(clientID uuid.UUID, orderID uuid.UUID) (*paymentRes.CheckoutResponse, error)
+	GetClientInvoices(clientID uuid.UUID, pg domains.Pagination) (*pagination.Response, error)
 	HandleClientWebhook(schema string, payload []byte, signature string) error
 }

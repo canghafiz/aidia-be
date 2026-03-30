@@ -120,8 +120,14 @@ func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, gu
 		return nil, fmt.Errorf("invalid token")
 	}
 
+	// Get schema
+	schema, err := helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema: %w", err)
+	}
+
 	// Get guest
-	guest, err := serv.GuestRepo.FindByID(serv.Db, guestID)
+	guest, err := serv.GuestRepo.FindByID(serv.Db, schema, guestID)
 	if err != nil {
 		return nil, fmt.Errorf("guest not found")
 	}
@@ -132,7 +138,7 @@ func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, gu
 	}
 
 	// Get messages
-	messages, err := serv.GuestMessageRepo.FindByGuestID(serv.Db, guestID, 100)
+	messages, err := serv.GuestMessageRepo.FindByGuestID(serv.Db, schema, guestID, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -176,8 +182,14 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 		return fmt.Errorf("invalid token")
 	}
 
+	// Get schema
+	schema, err := helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
+	if err != nil {
+		return fmt.Errorf("failed to get schema: %w", err)
+	}
+
 	// Get guest
-	guest, err := serv.GuestRepo.FindByID(serv.Db, guestID)
+	guest, err := serv.GuestRepo.FindByID(serv.Db, schema, guestID)
 	if err != nil {
 		return fmt.Errorf("guest not found")
 	}
@@ -197,7 +209,7 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 		IsActive: true,
 	}
 
-	err = serv.GuestMessageRepo.Create(serv.Db, newMsg)
+	err = serv.GuestMessageRepo.Create(serv.Db, schema, newMsg)
 	if err != nil {
 		return err
 	}
@@ -206,7 +218,7 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 	now := time.Now()
 	guest.LastMessageAt = &now
 	guest.IsRead = false
-	serv.GuestRepo.Update(serv.Db, *guest)
+	serv.GuestRepo.Update(serv.Db, schema, *guest)
 
 	// Broadcast to SSE hub
 	eventData := map[string]interface{}{

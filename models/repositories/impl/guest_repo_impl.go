@@ -14,13 +14,13 @@ func NewGuestRepoImpl() *GuestRepoImpl {
 	return &GuestRepoImpl{}
 }
 
-func (repo *GuestRepoImpl) Create(db *gorm.DB, guest domains.Guest) error {
-	return db.Table(guest.TableName()).Create(&guest).Error
+func (repo *GuestRepoImpl) Create(db *gorm.DB, schema string, guest domains.Guest) error {
+	return db.Table(schema + "." + guest.TableName()).Create(&guest).Error
 }
 
-func (repo *GuestRepoImpl) FindByID(db *gorm.DB, id uuid.UUID) (*domains.Guest, error) {
+func (repo *GuestRepoImpl) FindByID(db *gorm.DB, schema string, id uuid.UUID) (*domains.Guest, error) {
 	var guest domains.Guest
-	err := db.Table(guest.TableName()).Where("id = ?", id).First(&guest).Error
+	err := db.Table(schema + "." + guest.TableName()).Where("id = ?", id).First(&guest).Error
 	if err != nil {
 		return nil, err
 	}
@@ -38,8 +38,8 @@ func (repo *GuestRepoImpl) FindByTelegramChatID(db *gorm.DB, schema, chatID stri
 	return &guest, nil
 }
 
-func (repo *GuestRepoImpl) Update(db *gorm.DB, guest domains.Guest) error {
-	return db.Table(guest.TableName()).Save(&guest).Error
+func (repo *GuestRepoImpl) Update(db *gorm.DB, schema string, guest domains.Guest) error {
+	return db.Table(schema + "." + guest.TableName()).Save(&guest).Error
 }
 
 var _ repositories.GuestRepo = (*GuestRepoImpl)(nil)

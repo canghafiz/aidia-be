@@ -5,6 +5,7 @@ import (
 	"backend/middlewares"
 	"net/http"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -18,6 +19,16 @@ type Router struct {
 func NewRouter(r Router) *Router {
 	r.Engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	r.Engine.StaticFS("/assets", http.Dir("./assets"))
+
+	// Setup CORS global
+	r.Engine.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
+		AllowCredentials: false,
+		MaxAge:           86400,
+	}))
 
 	middleware := middlewares.Middleware(r.Dependency.JwtKey)
 
@@ -65,6 +76,13 @@ func NewRouter(r Router) *Router {
 			settingGroup.PATCH("/subgroup-name/:sub_group_name", r.Dependency.SettingCont.UpdateBySubgroupName)
 		}
 
+		// Telegram AI Prompt settings (per client)
+		settingClientGroup := generalGroup.Group("client/:client_id/settings").Use(middleware)
+		{
+			settingClientGroup.GET("/telegram-ai-prompt", r.Dependency.SettingCont.GetClientTelegramAIPrompt)
+			settingClientGroup.PATCH("/telegram-ai-prompt", r.Dependency.SettingCont.UpdateClientTelegramAIPrompt)
+		}
+
 		planGroup := generalGroup.Group("plans").Use(middleware)
 		{
 			planGroup.POST("", r.Dependency.PlanCont.Create)
@@ -101,7 +119,7 @@ func NewRouter(r Router) *Router {
 			}
 
 			// Client (customer bayar order tenant)
-			clientGroup := paymentGroup.Group("client")
+			clientGroup := paymentGroup.Group("client/:client_id")
 			{
 				// Webhook tanpa middleware — schema dari path param, validasi lewat Stripe-Signature header
 				clientGroup.POST("/webhook/:schema", r.Dependency.PaymentCont.HandleClientWebhook)
@@ -186,10 +204,18 @@ func NewRouter(r Router) *Router {
 			orderPaymentGroup.PATCH("/:payment_id/status", r.Dependency.OrderPaymentCont.UpdateStatus)
 		}
 
-		kitchenGroup := generalGroup.Group("client/:client_id/kitchen-display").Use(middleware)
+		kitchenGroup := generalGroup.Group("client/:client_id/kitchen-display")
 		{
 			kitchenGroup.GET("", r.Dependency.KitchenOrderCont.GetDisplay)
 			kitchenGroup.GET("/stream", r.Dependency.KitchenOrderCont.Stream)
+			kitchenGroup.OPTIONS("/stream", func(ctx *gin.Context) {
+				ctx.Header("Access-Control-Allow-Origin", "*")
+				ctx.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+				ctx.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With")
+				ctx.Header("Access-Control-Max-Age", "86400")
+				ctx.Header("Access-Control-Expose-Headers", "Content-Type")
+				ctx.AbortWithStatus(204)
+			})
 			kitchenGroup.PATCH("/:kitchen_id/status", r.Dependency.KitchenOrderCont.UpdateStatus)
 		}
 
@@ -212,6 +238,12 @@ func NewRouter(r Router) *Router {
 		telegramWebhookGroup := generalGroup.Group("webhook/telegram")
 		{
 			telegramWebhookGroup.POST("/:schema", r.Dependency.TelegramCont.Webhook)
+		}
+
+		// Internal API for n8n (no auth, can add internal API key middleware later)
+		internalGroup := generalGroup.Group("internal")
+		{
+			internalGroup.GET("/telegram/:schema/ai-prompt", r.Dependency.TelegramCont.GetAIPromptForSchema)
 		}
 	}
 

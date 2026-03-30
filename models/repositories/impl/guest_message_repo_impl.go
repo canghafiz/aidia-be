@@ -14,13 +14,13 @@ func NewGuestMessageRepoImpl() *GuestMessageRepoImpl {
 	return &GuestMessageRepoImpl{}
 }
 
-func (repo *GuestMessageRepoImpl) Create(db *gorm.DB, msg domains.GuestMessage) error {
-	return db.Table(msg.TableName()).Create(&msg).Error
+func (repo *GuestMessageRepoImpl) Create(db *gorm.DB, schema string, msg domains.GuestMessage) error {
+	return db.Table(schema + "." + msg.TableName()).Create(&msg).Error
 }
 
-func (repo *GuestMessageRepoImpl) FindByGuestID(db *gorm.DB, guestID uuid.UUID, limit int) ([]domains.GuestMessage, error) {
+func (repo *GuestMessageRepoImpl) FindByGuestID(db *gorm.DB, schema string, guestID uuid.UUID, limit int) ([]domains.GuestMessage, error) {
 	var messages []domains.GuestMessage
-	err := db.Table("guest_message").
+	err := db.Table(schema + ".guest_message").
 		Where("guest_id = ?", guestID).
 		Order("created_at ASC").
 		Limit(limit).
@@ -31,9 +31,9 @@ func (repo *GuestMessageRepoImpl) FindByGuestID(db *gorm.DB, guestID uuid.UUID, 
 	return messages, nil
 }
 
-func (repo *GuestMessageRepoImpl) GetLatestMessages(db *gorm.DB, guestID uuid.UUID, limit int) ([]domains.GuestMessage, error) {
+func (repo *GuestMessageRepoImpl) GetLatestMessages(db *gorm.DB, schema string, guestID uuid.UUID, limit int) ([]domains.GuestMessage, error) {
 	var messages []domains.GuestMessage
-	err := db.Table("guest_message").
+	err := db.Table(schema + ".guest_message").
 		Where("guest_id = ?", guestID).
 		Order("created_at DESC").
 		Limit(limit).

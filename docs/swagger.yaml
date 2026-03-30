@@ -387,6 +387,13 @@ definitions:
       updated_at:
         type: string
     type: object
+  kitchen_order.KitchenSSEEvent:
+    properties:
+      data: {}
+      type:
+        description: '"init", "update"'
+        type: string
+    type: object
   kitchen_order.OrderProductResponse:
     properties:
       id:
@@ -839,6 +846,19 @@ definitions:
       used_tokens:
         type: integer
     type: object
+  telegram.AIPromptResponse:
+    properties:
+      prompt:
+        type: string
+    type: object
+  telegram.UpdateAIPromptRequest:
+    properties:
+      prompt:
+        maxLength: 2000
+        type: string
+    required:
+    - prompt
+    type: object
   user.BusinessProfileResponse:
     properties:
       address:
@@ -1083,6 +1103,39 @@ info:
   title: AI-Dia API
   version: "1.0"
 paths:
+  /api/v1/internal/telegram/{schema}/ai-prompt:
+    get:
+      description: Get custom AI prompt for specific tenant schema (internal API for
+        n8n)
+      parameters:
+      - description: Tenant Schema
+        in: path
+        name: schema
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/telegram.AIPromptResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Get AI Prompt for Schema (Internal API for n8n)
+      tags:
+      - Telegram
   /api/v1/webhook/telegram/{schema}:
     post:
       consumes:
@@ -2074,18 +2127,33 @@ paths:
       - Kitchen Display
   /client/{client_id}/kitchen-display/stream:
     get:
-      description: Subscribe realtime kitchen display via Server-Sent Events
+      description: Subscribe realtime kitchen display via Server-Sent Events. Authentication
+        via Bearer token OR query parameter 'token'
       parameters:
       - description: Client ID
         in: path
         name: client_id
         required: true
         type: string
+      - description: JWT Token (alternative to Authorization header)
+        in: query
+        name: token
+        type: string
       produces:
       - text/event-stream
-      responses: {}
-      security:
-      - BearerAuth: []
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/kitchen_order.KitchenSSEEvent'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
       tags:
       - Kitchen Display
   /client/{client_id}/order-payments:
@@ -2866,6 +2934,80 @@ paths:
       - BearerAuth: []
       tags:
       - Product
+  /client/{client_id}/settings/telegram-ai-prompt:
+    get:
+      description: Get custom AI prompt for Telegram bot (per client/tenant)
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/telegram.AIPromptResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Client Telegram AI Prompt
+      tags:
+      - Settings
+    patch:
+      consumes:
+      - application/json
+      description: Update custom AI prompt for Telegram bot (per client/tenant)
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Update AI Prompt Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/telegram.UpdateAIPromptRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Update Client Telegram AI Prompt
+      tags:
+      - Settings
   /client/{client_id}/telegram/bot-token:
     patch:
       consumes:

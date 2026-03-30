@@ -67,14 +67,37 @@ func (cont *KitchenOrderContImpl) GetDisplay(ctx *gin.Context) {
 }
 
 // Stream @Summary      Kitchen Display Stream (SSE)
-// @Description  Subscribe realtime kitchen display via Server-Sent Events
+// @Description  Subscribe realtime kitchen display via Server-Sent Events. Authentication via Bearer token OR query parameter 'token'
 // @Tags         Kitchen Display
 // @Produce      text/event-stream
-// @Security     BearerAuth
-// @Param        client_id  path  string true "Client ID"
+// @Param        client_id  path  string  true  "Client ID"
+// @Param        token      query string  false  "JWT Token (alternative to Authorization header)"
+// @Success      200        {object}  resKitchen.KitchenSSEEvent
+// @Failure      401        {object}  helpers.ApiResponse
+// @Failure      500        {object}  helpers.ApiResponse
 // @Router       /client/{client_id}/kitchen-display/stream [get]
 func (cont *KitchenOrderContImpl) Stream(ctx *gin.Context) {
+	// Handle CORS preflight OPTIONS request
+	if ctx.Request.Method == "OPTIONS" {
+		ctx.Header("Access-Control-Allow-Origin", "*")
+		ctx.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+		ctx.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With, ngrok-skip-browser-warning")
+		ctx.Header("Access-Control-Max-Age", "86400")
+		ctx.AbortWithStatus(204)
+		return
+	}
+
+	// Get token from Authorization header OR query parameter
 	accessToken := helpers.GetJwtToken(ctx)
+	if accessToken == "" {
+		// Fallback: try query parameter
+		accessToken = ctx.Query("token")
+	}
+
+	if accessToken == "" {
+		exceptions.ErrorHandler(ctx, fmt.Errorf("authorization required"))
+		return
+	}
 
 	clientID, err := helpers.ParseUUID(ctx, "client_id")
 	if err != nil {
@@ -88,7 +111,7 @@ func (cont *KitchenOrderContImpl) Stream(ctx *gin.Context) {
 		exceptions.ErrorHandler(ctx, fmt.Errorf("user not found"))
 		return
 	}
-	
+
 	// Gunakan TenantSchema yang sudah normalized
 	if user.TenantSchema == nil || *user.TenantSchema == "" {
 		exceptions.ErrorHandler(ctx, fmt.Errorf("tenant schema not found"))
@@ -103,24 +126,36 @@ func (cont *KitchenOrderContImpl) Stream(ctx *gin.Context) {
 		return
 	}
 
-	// Set SSE headers
-	ctx.Header("Content-Type", "text/event-stream")
-	ctx.Header("Cache-Control", "no-cache")
-	ctx.Header("Connection", "keep-alive")
+	// Set SSE headers dengan CORS yang benar
 	ctx.Header("Access-Control-Allow-Origin", "*")
+	ctx.Header("Access-Control-Allow-Credentials", "false") // harus false kalau Allow-Origin: *
+	ctx.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	ctx.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With, ngrok-skip-browser-warning")
+	ctx.Header("Access-Control-Expose-Headers", "Content-Type")
+	ctx.Header("ngrok-skip-browser-warning", "true") // skip ngrok interstitial page
+	ctx.Header("Content-Type", "text/event-stream")
+	ctx.Header("Cache-Control", "no-cache, no-store, must-revalidate")
+	ctx.Header("Connection", "keep-alive")
 	ctx.Header("X-Accel-Buffering", "no")
+	ctx.Header("Transfer-Encoding", "chunked")
 
 	// Subscribe ke hub pakai schema
 	h := hub.GetKitchenHub()
 	ch := h.Subscribe(schema)
-	defer h.Unsubscribe(schema, ch)
+	defer func() {
+		h.Unsubscribe(schema, ch)
+	}()
 
 	// Kirim data awal
 	initEvent := resKitchen.KitchenSSEEvent{
 		Type: "init",
 		Data: result,
 	}
-	initData, _ := json.Marshal(initEvent)
+	initData, err := json.Marshal(initEvent)
+	if err != nil {
+		log.Printf("[KitchenSSE] marshal init error: %v", err)
+		return
+	}
 	if _, err := fmt.Fprintf(ctx.Writer, "data: %s\n\n", initData); err != nil {
 		log.Printf("[KitchenSSE] write init error: %v", err)
 		return

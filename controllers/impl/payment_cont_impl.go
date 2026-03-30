@@ -226,14 +226,19 @@ func (cont *PaymentContImpl) HandlePlatformWebhook(ctx *gin.Context) {
 // @Tags         Payment Client
 // @Produce      json
 // @Security     BearerAuth
-// @Param        order_id  path      string true "Order ID"
+// @Param        client_id  path      string true "Client ID (tenant UUID)"
+// @Param        order_id   path      string true "Order ID"
 // @Success      200       {object}  helpers.ApiResponse{data=payment.CheckoutResponse}
 // @Failure      400       {object}  helpers.ApiResponse
 // @Failure      401       {object}  helpers.ApiResponse
 // @Failure      500       {object}  helpers.ApiResponse
-// @Router       /payments/client/checkout/{order_id} [post]
+// @Router       /payments/client/{client_id}/checkout/{order_id} [post]
 func (cont *PaymentContImpl) CreateClientCheckout(ctx *gin.Context) {
-	accessToken := helpers.GetJwtToken(ctx)
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
 
 	orderID, err := helpers.ParseUUID(ctx, "order_id")
 	if err != nil {
@@ -241,7 +246,7 @@ func (cont *PaymentContImpl) CreateClientCheckout(ctx *gin.Context) {
 		return
 	}
 
-	result, errServ := cont.PaymentServ.CreateClientCheckout(accessToken, orderID)
+	result, errServ := cont.PaymentServ.CreateClientCheckout(clientID, orderID)
 	if errServ != nil {
 		exceptions.ErrorHandler(ctx, errServ)
 		return
@@ -265,17 +270,23 @@ func (cont *PaymentContImpl) CreateClientCheckout(ctx *gin.Context) {
 // @Tags         Payment Client
 // @Produce      json
 // @Security     BearerAuth
-// @Param        page   query     int false "Page"
-// @Param        limit  query     int false "Limit"
-// @Success      200    {object}  helpers.ApiResponse{data=pagination.Response}
-// @Failure      401    {object}  helpers.ApiResponse
-// @Failure      500    {object}  helpers.ApiResponse
-// @Router       /payments/client/invoices [get]
+// @Param        client_id  path      string true "Client ID (tenant UUID)"
+// @Param        page       query     int     false "Page"
+// @Param        limit      query     int     false "Limit"
+// @Success      200        {object}  helpers.ApiResponse{data=pagination.Response}
+// @Failure      401        {object}  helpers.ApiResponse
+// @Failure      500        {object}  helpers.ApiResponse
+// @Router       /payments/client/{client_id}/invoices [get]
 func (cont *PaymentContImpl) GetClientInvoices(ctx *gin.Context) {
-	accessToken := helpers.GetJwtToken(ctx)
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
 	pg := domains.ParsePagination(ctx)
 
-	result, errServ := cont.PaymentServ.GetClientInvoices(accessToken, pg)
+	result, errServ := cont.PaymentServ.GetClientInvoices(clientID, pg)
 	if errServ != nil {
 		exceptions.ErrorHandler(ctx, errServ)
 		return

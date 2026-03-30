@@ -23,6 +23,7 @@ type N8NRequest struct {
 	GuestID  string                  `json:"guest_id"`
 	ChatID   string                  `json:"chat_id"`
 	Message  string                  `json:"message"`
+	Prompt   string                  `json:"prompt,omitempty"`
 	History  []N8NMessageHistory     `json:"history,omitempty"`
 	Metadata map[string]interface{}  `json:"metadata,omitempty"`
 }
@@ -39,15 +40,24 @@ func NewN8NServImpl() *N8NServImpl {
 		N8NURL: os.Getenv("N8N_WEBHOOK_URL"),
 		APIKey: os.Getenv("N8N_API_KEY"),
 		HTTPClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: 120 * time.Second, // Increase timeout for slow connections
+			Transport: &http.Transport{
+				TLSHandshakeTimeout:   30 * time.Second,
+				ResponseHeaderTimeout: 60 * time.Second,
+			},
 		},
 	}
 }
 
 // ProcessMessage forwards message to n8n for AI processing
-func (s *N8NServImpl) ProcessMessage(schema, guestID, chatID, message string, history []domains.GuestMessage) (*services.N8NResponse, error) {
+func (s *N8NServImpl) ProcessMessage(schema, guestID, chatID, message, prompt string, history []domains.GuestMessage) (*services.N8NResponse, error) {
 	if s.N8NURL == "" {
 		return nil, fmt.Errorf("n8n webhook URL not configured")
+	}
+
+	// Use default prompt if not provided
+	if prompt == "" {
+		prompt = "Anda adalah asisten AI untuk restoran ini. Tugas Anda:\n1. Bantu customer lihat menu/produk\n2. Bantu customer buat pesanan\n3. Jawab pertanyaan seputar restoran\n4. Selalu konfirmasi sebelum membuat pesanan\n\nBalas dengan bahasa yang ramah dan natural."
 	}
 
 	// Build request
@@ -56,6 +66,7 @@ func (s *N8NServImpl) ProcessMessage(schema, guestID, chatID, message string, hi
 		GuestID: guestID,
 		ChatID:  chatID,
 		Message: message,
+		Prompt:  prompt,
 	}
 
 	// Add message history (last 20 messages for context)

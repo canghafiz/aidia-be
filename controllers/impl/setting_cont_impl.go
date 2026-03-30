@@ -3,19 +3,28 @@ package impl
 import (
 	"backend/exceptions"
 	"backend/helpers"
-	"fmt"
+	"backend/models/repositories"
 	req "backend/models/requests/setting"
 	"backend/models/services"
 
+	"fmt"
+
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type SettingContImpl struct {
 	SettingServ services.SettingServ
+	UserRepo    repositories.UsersRepo
+	Db          *gorm.DB
 }
 
-func NewSettingContImpl(settingServ services.SettingServ) *SettingContImpl {
-	return &SettingContImpl{SettingServ: settingServ}
+func NewSettingContImpl(settingServ services.SettingServ, userRepo repositories.UsersRepo, db *gorm.DB) *SettingContImpl {
+	return &SettingContImpl{
+		SettingServ: settingServ,
+		UserRepo:    userRepo,
+		Db:          db,
+	}
 }
 
 // GetNotification godoc
@@ -172,6 +181,116 @@ func (cont *SettingContImpl) UpdateTelegramBotToken(context *gin.Context) {
 		Success: true,
 		Code:    200,
 		Data:    map[string]string{"message": "Telegram bot token updated and webhook registered"},
+	}
+
+	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
+	if errResponse != nil {
+		exceptions.ErrorHandler(context, errResponse)
+		return
+	}
+}
+
+// GetClientTelegramAIPrompt godoc
+// @Summary      Get Client Telegram AI Prompt
+// @Description  Get custom AI prompt for Telegram bot (per client/tenant)
+// @Tags         Settings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID"
+// @Success      200        {object}  helpers.ApiResponse{data=telegram.AIPromptResponse}
+// @Failure      401        {object}  helpers.ApiResponse
+// @Failure      500        {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/telegram-ai-prompt [get]
+func (cont *SettingContImpl) GetClientTelegramAIPrompt(context *gin.Context) {
+	jwtToken := helpers.GetJwtToken(context)
+
+	clientID, err := helpers.ParseUUID(context, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	// Get schema from client_id
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	// Get prompt from setting
+	settingPrompt, err := cont.SettingServ.GetTelegramAIPrompt(jwtToken, schema)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	response := helpers.ApiResponse{
+		Success: true,
+		Code:    200,
+		Data: map[string]string{
+			"prompt": settingPrompt,
+		},
+	}
+
+	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
+	if errResponse != nil {
+		exceptions.ErrorHandler(context, errResponse)
+		return
+	}
+}
+
+// UpdateClientTelegramAIPrompt godoc
+// @Summary      Update Client Telegram AI Prompt
+// @Description  Update custom AI prompt for Telegram bot (per client/tenant)
+// @Tags         Settings
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID"
+// @Param        request    body  telegram.UpdateAIPromptRequest  true  "Update AI Prompt Request"
+// @Success      200        {object}  helpers.ApiResponse
+// @Failure      400        {object}  helpers.ApiResponse
+// @Failure      401        {object}  helpers.ApiResponse
+// @Failure      500        {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/telegram-ai-prompt [patch]
+func (cont *SettingContImpl) UpdateClientTelegramAIPrompt(context *gin.Context) {
+	jwtToken := helpers.GetJwtToken(context)
+
+	clientID, err := helpers.ParseUUID(context, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	var request struct {
+		Prompt string `json:"prompt" validate:"required,max=2000"`
+	}
+
+	if err := helpers.ReadFromRequestBody(context, &request); err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	// Get schema from client_id (BUKAN dari token!)
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	// Update prompt ke schema tenant yang benar
+	err = cont.SettingServ.UpdateTelegramAIPromptForSchema(jwtToken, schema, request.Prompt)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	response := helpers.ApiResponse{
+		Success: true,
+		Code:    200,
+		Data: map[string]string{
+			"message": "AI prompt updated successfully",
+		},
 	}
 
 	errResponse := helpers.WriteToResponseBody(context, response.Code, response)

@@ -29,7 +29,9 @@ func (j *JSONB) Scan(value interface{}) error {
 		return fmt.Errorf("failed to scan JSONB: value is not []byte")
 	}
 
-	return json.Unmarshal(bytes, j)
+	// Unmarshal into alias type to avoid infinite recursion
+	type jsonbAlias JSONB
+	return json.Unmarshal(bytes, (*jsonbAlias)(j))
 }
 
 // MarshalJSON implements json.Marshaler interface
@@ -45,5 +47,8 @@ func (j *JSONB) UnmarshalJSON(data []byte) error {
 	if j == nil {
 		return fmt.Errorf("cannot unmarshal into nil JSONB")
 	}
-	return json.Unmarshal(data, j)
+
+	// Unmarshal into alias type to avoid infinite recursion
+	type jsonbAlias JSONB
+	return json.Unmarshal(data, (*jsonbAlias)(j))
 }

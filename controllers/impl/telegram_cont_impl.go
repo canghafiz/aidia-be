@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -109,10 +110,17 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	log.Printf("[Telegram Webhook] schema: %s, chat_id: %s, user: %s, message: %s",
 		schema, chatID, userID, text)
 
-	// Get tenant info from schema
-	user, err := cont.UserRepo.FindByUsernameOrEmail(cont.Db, schema)
-	if err != nil {
+	// Get tenant info from schema (preload Tenant)
+	user, err := cont.UserRepo.FindByUsernameOrEmail(cont.Db, schema, "Tenant")
+	if err != nil || user == nil {
 		log.Printf("[Telegram Webhook] tenant not found: %v", err)
+		ctx.JSON(200, gin.H{"status": "ok"})
+		return
+	}
+
+	// Check if tenant exists
+	if user.Tenant == nil || user.Tenant.TenantID == uuid.Nil {
+		log.Printf("[Telegram Webhook] tenant data not found for schema: %s", schema)
 		ctx.JSON(200, gin.H{"status": "ok"})
 		return
 	}
@@ -162,7 +170,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			IsRead:   false,
 		}
 
-		if err := cont.GuestRepo.Create(cont.Db, *guest); err != nil {
+		if err := cont.GuestRepo.Create(cont.Db, schema, *guest); err != nil {
 			log.Printf("[Telegram Webhook] failed to create guest: %v", err)
 			ctx.JSON(200, gin.H{"status": "ok"})
 			return
@@ -183,7 +191,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 		IsActive:          true,
 	}
 
-	if err := cont.GuestMessageRepo.Create(cont.Db, newMessage); err != nil {
+	if err := cont.GuestMessageRepo.Create(cont.Db, schema, newMessage); err != nil {
 		log.Printf("[Telegram Webhook] failed to save message: %v", err)
 		ctx.JSON(200, gin.H{"status": "ok"})
 		return
@@ -192,7 +200,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	// Update guest last_message_at
 	now := time.Now()
 	guest.LastMessageAt = &now
-	cont.GuestRepo.Update(cont.Db, *guest)
+	cont.GuestRepo.Update(cont.Db, schema, *guest)
 
 	// Broadcast to SSE hub
 	eventData := map[string]interface{}{
@@ -213,11 +221,27 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	h.BroadcastToGuest(tenantID.String(), guest.ID.String(), string(eventJSON))
 
 	// Get message history for context
-	history, _ := cont.GuestMessageRepo.GetLatestMessages(cont.Db, guest.ID, 20)
+	history, _ := cont.GuestMessageRepo.GetLatestMessages(cont.Db, schema, guest.ID, 20)
+
+	// Get custom prompt from setting
+	customPrompt := ""
+	settingPrompt, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "Telegram Bot")
+	if err == nil && len(settingPrompt) > 0 {
+		for _, s := range settingPrompt {
+			if s.Name == "ai-prompt" {
+				customPrompt = s.Value
+				break
+			}
+		}
+	}
+	
+	log.Printf("[DEBUG] customPrompt from DB: %s", customPrompt)
 
 	// Forward to n8n for AI processing
 	go func() {
-		n8nResp, err := cont.N8NServ.ProcessMessage(schema, guest.ID.String(), chatID, text, history)
+		log.Printf("[n8n] forwarding to n8n: schema=%s, guest_id=%s, prompt=%s", schema, guest.ID.String(), customPrompt)
+		
+		n8nResp, err := cont.N8NServ.ProcessMessage(schema, guest.ID.String(), chatID, text, customPrompt, history)
 		if err != nil {
 			log.Printf("[n8n] error: %v", err)
 			return
@@ -232,7 +256,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			IsHuman:  false,
 			IsActive: true,
 		}
-		cont.GuestMessageRepo.Create(cont.Db, aiMessage)
+		cont.GuestMessageRepo.Create(cont.Db, schema, aiMessage)
 
 		// Send reply to Telegram
 		tgClient := helpers.NewTelegramClient(botToken)
@@ -263,6 +287,45 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	}()
 
 	ctx.JSON(200, gin.H{"status": "ok"})
+}
+
+// GetAIPromptForSchema godoc
+// @Summary      Get AI Prompt for Schema (Internal API for n8n)
+// @Description  Get custom AI prompt for specific tenant schema (internal API for n8n)
+// @Tags         Telegram
+// @Produce      json
+// @Param        schema  path  string  true  "Tenant Schema"
+// @Success      200    {object}  helpers.ApiResponse{data=telegram.AIPromptResponse}
+// @Failure      400    {object}  helpers.ApiResponse
+// @Failure      500    {object}  helpers.ApiResponse
+// @Router       /api/v1/internal/telegram/{schema}/ai-prompt [get]
+func (cont *TelegramContImpl) GetAIPromptForSchema(ctx *gin.Context) {
+	schema := ctx.Param("schema")
+	if schema == "" {
+		ctx.JSON(400, gin.H{"error": "schema required"})
+		return
+	}
+
+	// Get prompt from setting
+	settingPrompt, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "Telegram Bot")
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": "failed to get prompt"})
+		return
+	}
+
+	prompt := "Anda adalah asisten AI untuk restoran ini. Tugas Anda:\n1. Bantu customer lihat menu/produk\n2. Bantu customer buat pesanan\n3. Jawab pertanyaan seputar restoran\n4. Selalu konfirmasi sebelum membuat pesanan\n\nBalas dengan bahasa yang ramah dan natural."
+
+	for _, s := range settingPrompt {
+		if s.Name == "ai-prompt" {
+			prompt = s.Value
+			break
+		}
+	}
+
+	ctx.JSON(200, gin.H{
+		"prompt": prompt,
+		"schema": schema,
+	})
 }
 
 var _ interface{} = (*TelegramContImpl)(nil)

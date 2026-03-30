@@ -23,6 +23,7 @@ import (
 type PaymentServImpl struct {
 	Db             *gorm.DB
 	JwtKey         string
+	UserRepo       repositories.UsersRepo
 	TenantPlanRepo repositories.TenantPlanRepo
 	PlanRepo       repositories.PlanRepo
 	TenantRepo     repositories.TenantRepo
@@ -32,6 +33,7 @@ type PaymentServImpl struct {
 func NewPaymentServImpl(
 	db *gorm.DB,
 	jwtKey string,
+	userRepo repositories.UsersRepo,
 	tenantPlanRepo repositories.TenantPlanRepo,
 	planRepo repositories.PlanRepo,
 	tenantRepo repositories.TenantRepo,
@@ -40,6 +42,7 @@ func NewPaymentServImpl(
 	return &PaymentServImpl{
 		Db:             db,
 		JwtKey:         jwtKey,
+		UserRepo:       userRepo,
 		TenantPlanRepo: tenantPlanRepo,
 		PlanRepo:       planRepo,
 		TenantRepo:     tenantRepo,
@@ -434,18 +437,13 @@ func (serv *PaymentServImpl) HandlePlatformWebhook(payload []byte, signature str
 // CLIENT - Stripe per tenant
 // ============================================================
 
-func (serv *PaymentServImpl) CreateClientCheckout(accessToken string, orderID uuid.UUID) (*paymentRes.CheckoutResponse, error) {
-	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"Client"})
-	if err != nil || !ok {
-		return nil, err
-	}
-
-	schema, err := helpers.GetUsernameFromToken(accessToken, serv.JwtKey)
+func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uuid.UUID) (*paymentRes.CheckoutResponse, error) {
+	schema, err := helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
 	if err != nil {
 		return nil, err
 	}
 
-	secretKey, err := serv.getStripeKey(*schema, "Stripe Client", "stripe-client-secret-key")
+	secretKey, err := serv.getStripeKey(schema, "Stripe Client", "stripe-client-secret-key")
 	if err != nil {
 		return nil, err
 	}
@@ -468,12 +466,7 @@ func (serv *PaymentServImpl) CreateClientCheckout(accessToken string, orderID uu
 	}, nil
 }
 
-func (serv *PaymentServImpl) GetClientInvoices(accessToken string, pg domains.Pagination) (*pagination.Response, error) {
-	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"Client"})
-	if err != nil || !ok {
-		return nil, err
-	}
-
+func (serv *PaymentServImpl) GetClientInvoices(clientID uuid.UUID, pg domains.Pagination) (*pagination.Response, error) {
 	// Placeholder — sesuaikan dengan order domain tenant
 	return &pagination.Response{}, nil
 }
