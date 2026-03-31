@@ -405,21 +405,20 @@ func (cont *TelegramContImpl) GetAIPromptForSchema(ctx *gin.Context) {
 }
 
 // RequestPhone godoc
-// @Summary      Request Phone Number from User
-// @Description  Send keyboard with "Share Phone Number" button to user
-// @Tags         Telegram
+// @Summary      Request Phone Number from User (Internal API for n8n)
+// @Description  Send keyboard with "Share Phone Number" button to user (internal API for n8n)
+// @Tags         Internal
 // @Produce      json
-// @Param        client_id  path  string  true  "Client ID"
+// @Param        schema  path  string  true  "Tenant Schema"
 // @Param        request    body  telegram.RequestPhoneRequest  true  "Request Phone Request"
 // @Success      200        {object}  helpers.ApiResponse
 // @Failure      400        {object}  helpers.ApiResponse
 // @Failure      500        {object}  helpers.ApiResponse
-// @Security     BearerAuth
-// @Router       /client/{client_id}/telegram/request-phone [post]
+// @Router       /api/v1/internal/telegram/{schema}/request-phone [post]
 func (cont *TelegramContImpl) RequestPhone(ctx *gin.Context) {
-	clientID, err := helpers.ParseUUID(ctx, "client_id")
-	if err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
+	schema := ctx.Param("schema")
+	if schema == "" {
+		ctx.JSON(400, gin.H{"error": "schema required"})
 		return
 	}
 
@@ -432,14 +431,7 @@ func (cont *TelegramContImpl) RequestPhone(ctx *gin.Context) {
 		return
 	}
 
-	// Get schema
-	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
-	if err != nil {
-		ctx.JSON(400, gin.H{"error": err.Error()})
-		return
-	}
-
-	// Get bot token
+	// Get bot token from setting
 	setting, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "Telegram")
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
@@ -476,7 +468,7 @@ func (cont *TelegramContImpl) RequestPhone(ctx *gin.Context) {
 		"one_time_keyboard": true,
 	}
 
-	message := "Hello! To complete your registration, please share your phone number with us.\n\nClick the button below to share:"
+	message := "👋 Welcome! To complete your registration, please share your phone number with us.\n\nClick the button below to share:"
 
 	err = tgClient.SendMessageWithKeyboard(request.ChatID, message, keyboard)
 	if err != nil {

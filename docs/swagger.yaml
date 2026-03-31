@@ -1163,6 +1163,40 @@ paths:
       summary: Get AI Prompt for Schema (Internal API for n8n)
       tags:
       - Telegram
+  /api/v1/internal/telegram/{schema}/request-phone:
+    post:
+      description: Send keyboard with "Share Phone Number" button to user (internal
+        API for n8n)
+      parameters:
+      - description: Tenant Schema
+        in: path
+        name: schema
+        required: true
+        type: string
+      - description: Request Phone Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/telegram.RequestPhoneRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Request Phone Number from User (Internal API for n8n)
+      tags:
+      - Internal
   /api/v1/webhook/telegram/{schema}:
     post:
       consumes:
@@ -3074,41 +3108,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Update Telegram Bot Token
-      tags:
-      - Telegram
-  /client/{client_id}/telegram/request-phone:
-    post:
-      description: Send keyboard with "Share Phone Number" button to user
-      parameters:
-      - description: Client ID
-        in: path
-        name: client_id
-        required: true
-        type: string
-      - description: Request Phone Request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/telegram.RequestPhoneRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: Request Phone Number from User
       tags:
       - Telegram
   /payments/client/{client_id}/checkout/{order_id}:
