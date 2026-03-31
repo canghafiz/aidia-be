@@ -3081,7 +3081,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Settings"
+                    "Telegram"
                 ],
                 "summary": "Update Telegram Bot Token",
                 "parameters": [
@@ -3098,7 +3098,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/telegram.UpdateBotTokenRequest"
                         }
                     }
                 ],
@@ -3117,6 +3117,67 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/telegram/request-phone": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Send keyboard with \"Share Phone Number\" button to user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Telegram"
+                ],
+                "summary": "Request Phone Number from User",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Request Phone Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/telegram.RequestPhoneRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -5116,6 +5177,23 @@ const docTemplate = `{
                 }
             }
         },
+        "impl.Contact": {
+            "type": "object",
+            "properties": {
+                "first_name": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "phone_number": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
         "impl.TelegramWebhookRequest": {
             "type": "object",
             "properties": {
@@ -5124,6 +5202,9 @@ const docTemplate = `{
                     "properties": {
                         "chat": {
                             "$ref": "#/definitions/impl.Chat"
+                        },
+                        "contact": {
+                            "$ref": "#/definitions/impl.Contact"
                         },
                         "date": {
                             "type": "integer"
@@ -5942,6 +6023,17 @@ const docTemplate = `{
                 }
             }
         },
+        "telegram.RequestPhoneRequest": {
+            "type": "object",
+            "required": [
+                "chat_id"
+            ],
+            "properties": {
+                "chat_id": {
+                    "type": "string"
+                }
+            }
+        },
         "telegram.UpdateAIPromptRequest": {
             "type": "object",
             "required": [
@@ -5951,6 +6043,17 @@ const docTemplate = `{
                 "prompt": {
                     "type": "string",
                     "maxLength": 2000
+                }
+            }
+        },
+        "telegram.UpdateBotTokenRequest": {
+            "type": "object",
+            "required": [
+                "bot_token"
+            ],
+            "properties": {
+                "bot_token": {
+                    "type": "string"
                 }
             }
         },

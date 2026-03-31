@@ -87,6 +87,50 @@ func (c *TelegramClient) SendMessage(chatID, text string) (*SendMessageResponse,
 	return &telegramResp, nil
 }
 
+// SendMessageWithKeyboard sends a message with custom keyboard (for contact share button)
+func (c *TelegramClient) SendMessageWithKeyboard(chatID, text string, keyboard map[string]interface{}) error {
+	if c.Token == "" {
+		return fmt.Errorf("telegram token is empty")
+	}
+
+	reqBody := map[string]interface{}{
+		"chat_id": chatID,
+		"text":    text,
+		"reply_markup": keyboard,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s%s/sendMessage", TelegramAPIURL, c.Token)
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var telegramResp SendMessageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&telegramResp); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if !telegramResp.OK {
+		return fmt.Errorf("telegram API error: response not ok")
+	}
+
+	return nil
+}
+
 // SetWebhookRequest represents Telegram setWebhook request
 type SetWebhookRequest struct {
 	URL string `json:"url"`

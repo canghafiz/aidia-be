@@ -137,14 +137,15 @@ func (cont *SettingContImpl) UpdateBySubgroupName(context *gin.Context) {
 // UpdateTelegramBotToken godoc
 // @Summary      Update Telegram Bot Token
 // @Description  Update Telegram bot token and auto-register webhook
-// @Tags         Settings
+// @Tags         Telegram
 // @Accept       json
 // @Produce      json
 // @Param        client_id  path  string  true  "Client ID"
-// @Param        request    body  object  true  "Bot token request"
+// @Param        request    body  telegram.UpdateBotTokenRequest  true  "Bot token request"
 // @Success      200        {object}  helpers.ApiResponse
 // @Failure      400        {object}  helpers.ApiResponse
 // @Failure      401        {object}  helpers.ApiResponse
+// @Failure      500        {object}  helpers.ApiResponse
 // @Security     BearerAuth
 // @Router       /client/{client_id}/telegram/bot-token [patch]
 func (cont *SettingContImpl) UpdateTelegramBotToken(context *gin.Context) {

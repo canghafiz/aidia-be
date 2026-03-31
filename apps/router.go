@@ -232,6 +232,7 @@ func NewRouter(r Router) *Router {
 		telegramGroup := generalGroup.Group("client/:client_id/telegram").Use(middleware)
 		{
 			telegramGroup.PATCH("/bot-token", r.Dependency.SettingCont.UpdateTelegramBotToken)
+			telegramGroup.POST("/request-phone", r.Dependency.TelegramCont.RequestPhone)
 		}
 
 		// Telegram Webhook (public - no middleware)

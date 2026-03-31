@@ -51,6 +51,7 @@ type TelegramWebhookRequest struct {
 		Chat      *Chat  `json:"chat"`
 		Date      int64  `json:"date"`
 		Text      string `json:"text"`
+		Contact   *Contact `json:"contact"`
 	} `json:"message"`
 }
 
@@ -66,6 +67,13 @@ type Chat struct {
 	ID       int    `json:"id"`
 	Type     string `json:"type"`
 	Username string `json:"username"`
+}
+
+type Contact struct {
+	PhoneNumber string `json:"phone_number"`
+	FirstName   string `json:"first_name"`
+	LastName    string `json:"last_name"`
+	UserID      int    `json:"user_id"`
 }
 
 // Webhook godoc
@@ -104,7 +112,29 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	// Extract data
 	chatID := fmt.Sprintf("%d", payload.Message.Chat.ID)
 	userID := fmt.Sprintf("%d", payload.Message.From.ID)
-	text := payload.Message.Text
+	
+	// Handle contact share (phone number)
+	if payload.Message.Contact != nil {
+		log.Printf("[Telegram Webhook] Contact received: %s, %s", 
+			payload.Message.Contact.PhoneNumber, 
+			payload.Message.Contact.FirstName)
+		
+		// Update guest with phone number
+		guest, err := cont.GuestRepo.FindByTelegramChatID(cont.Db, schema, chatID)
+		if err == nil && guest != nil {
+			guest.Phone = payload.Message.Contact.PhoneNumber
+			cont.GuestRepo.Update(cont.Db, schema, *guest)
+			log.Printf("[Telegram Webhook] Guest phone updated: %s", guest.Phone)
+		}
+		
+		ctx.JSON(200, gin.H{"status": "ok"})
+		return
+	}
+	
+	text := ""
+	if payload.Message.Text != "" {
+		text = payload.Message.Text
+	}
 	messageID := payload.Message.MessageID
 
 	log.Printf("[Telegram Webhook] schema: %s, chat_id: %s, user: %s, message: %s",
@@ -152,22 +182,31 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	// Find or create guest
 	guest, err := cont.GuestRepo.FindByTelegramChatID(cont.Db, schema, chatID)
 	if err != nil {
-		// Create new guest
+		// Build name from first_name + last_name
+		fullName := payload.Message.From.FirstName
+		if payload.Message.From.LastName != "" {
+			fullName += " " + payload.Message.From.LastName
+		}
+
+		// Create new guest with ALL available data
 		guest = &domains.Guest{
 			TenantID:         &tenantID,
-			Identity:         chatID,
+			Identity:         chatID,              // Set identity = chat_id
+			Username:         payload.Message.From.Username, // Telegram username (@xxx)
+			Phone:            "",                  // Empty (Telegram tidak kasih phone)
+			Name:             fullName,            // Full name
 			TelegramChatID:   chatID,
 			TelegramUsername: payload.Message.From.Username,
-			Name:             payload.Message.From.FirstName,
 			Sosmed: domains.JSONB{
-				"id":         float64(payload.Message.From.ID),
-				"first_name": payload.Message.From.FirstName,
-				"last_name":  payload.Message.From.LastName,
-				"username":   payload.Message.From.Username,
-				"is_bot":     payload.Message.From.IsBot,
+				"id":            float64(payload.Message.From.ID),
+				"first_name":    payload.Message.From.FirstName,
+				"last_name":     payload.Message.From.LastName,
+				"username":      payload.Message.From.Username,
+				"is_bot":        payload.Message.From.IsBot,
 			},
-			IsActive: true,
-			IsRead:   false,
+			IsActive:   true,
+			IsRead:     false,
+			IsTakeOver: false,
 		}
 
 		if err := cont.GuestRepo.Create(cont.Db, schema, *guest); err != nil {
@@ -178,6 +217,43 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 
 		// Reload guest with ID
 		guest, _ = cont.GuestRepo.FindByTelegramChatID(cont.Db, schema, chatID)
+		
+		// AUTO: Send phone request to new guest asynchronously
+		go cont.sendPhoneRequest(schema, chatID, botToken)
+	} else {
+		// Update existing guest data if changed
+		needsUpdate := false
+		
+		// Update username if changed
+		if payload.Message.From.Username != "" && guest.TelegramUsername != payload.Message.From.Username {
+			guest.TelegramUsername = payload.Message.From.Username
+			guest.Username = payload.Message.From.Username
+			needsUpdate = true
+		}
+		
+		// Update name if changed
+		fullName := payload.Message.From.FirstName
+		if payload.Message.From.LastName != "" {
+			fullName += " " + payload.Message.From.LastName
+		}
+		if guest.Name != fullName {
+			guest.Name = fullName
+			needsUpdate = true
+		}
+		
+		// Update sosmed JSON
+		guest.Sosmed = domains.JSONB{
+			"id":            float64(payload.Message.From.ID),
+			"first_name":    payload.Message.From.FirstName,
+			"last_name":     payload.Message.From.LastName,
+			"username":      payload.Message.From.Username,
+			"is_bot":        payload.Message.From.IsBot,
+		}
+		needsUpdate = true
+		
+		if needsUpdate {
+			cont.GuestRepo.Update(cont.Db, schema, *guest)
+		}
 	}
 
 	// Save message to database
@@ -326,6 +402,100 @@ func (cont *TelegramContImpl) GetAIPromptForSchema(ctx *gin.Context) {
 		"prompt": prompt,
 		"schema": schema,
 	})
+}
+
+// RequestPhone godoc
+// @Summary      Request Phone Number from User
+// @Description  Send keyboard with "Share Phone Number" button to user
+// @Tags         Telegram
+// @Produce      json
+// @Param        client_id  path  string  true  "Client ID"
+// @Param        request    body  telegram.RequestPhoneRequest  true  "Request Phone Request"
+// @Success      200        {object}  helpers.ApiResponse
+// @Failure      400        {object}  helpers.ApiResponse
+// @Failure      500        {object}  helpers.ApiResponse
+// @Security     BearerAuth
+// @Router       /client/{client_id}/telegram/request-phone [post]
+func (cont *TelegramContImpl) RequestPhone(ctx *gin.Context) {
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	var request struct {
+		ChatID string `json:"chat_id" validate:"required"`
+	}
+
+	if err := helpers.ReadFromRequestBody(ctx, &request); err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get schema
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Get bot token
+	setting, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "Telegram")
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	botToken := ""
+	for _, s := range setting {
+		if s.Name == "telegram-bot-token" {
+			botToken = s.Value
+			break
+		}
+	}
+
+	if botToken == "" {
+		ctx.JSON(500, gin.H{"error": "bot token not configured"})
+		return
+	}
+
+	// Send message with contact button
+	tgClient := helpers.NewTelegramClient(botToken)
+	
+	// Create custom keyboard with contact button
+	keyboard := map[string]interface{}{
+		"keyboard": [][]map[string]interface{}{
+			{
+				{
+					"text":            "📱 Share Phone Number",
+					"request_contact": true,
+				},
+			},
+		},
+		"resize_keyboard":   true,
+		"one_time_keyboard": true,
+	}
+
+	message := "Hello! To complete your registration, please share your phone number with us.\n\nClick the button below to share:"
+
+	err = tgClient.SendMessageWithKeyboard(request.ChatID, message, keyboard)
+	if err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := helpers.ApiResponse{
+		Success: true,
+		Code:    200,
+		Data: map[string]string{
+			"message": "Phone request sent successfully",
+		},
+	}
+
+	if err := helpers.WriteToResponseBody(ctx, response.Code, response); err != nil {
+		ctx.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
 }
 
 var _ interface{} = (*TelegramContImpl)(nil)
