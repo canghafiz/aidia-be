@@ -15,17 +15,17 @@ func (cont *TelegramContImpl) sendPhoneRequest(schema, chatID, botToken string) 
 	tgClient := helpers.NewTelegramClient(botToken)
 
 	// Create custom keyboard with contact button
-	keyboard := map[string]interface{}{
-		"keyboard": [][]map[string]interface{}{
+	keyboard := &helpers.ReplyKeyboardMarkup{
+		Keyboard: [][]helpers.KeyboardButton{
 			{
 				{
-					"text":            "📱 Share Phone Number",
-					"request_contact": true,
+					Text:           "📱 Share Phone Number",
+					RequestContact: true,
 				},
 			},
 		},
-		"resize_keyboard":   true,
-		"one_time_keyboard": true,
+		ResizeKeyboard:  true,
+		OneTimeKeyboard: true,
 	}
 
 	message := "👋 Welcome! To complete your registration, please share your phone number with us.\n\nClick the button below to share:"
