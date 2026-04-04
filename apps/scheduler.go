@@ -26,7 +26,8 @@ func (s *Scheduler) Start() {
 		return
 	}
 
-	_, err = s.cron.AddFunc("*/30 * * * *", s.expireOrders)
+	// Run every minute to catch expired orders quickly
+	_, err = s.cron.AddFunc("*/1 * * * *", s.expireOrders)
 	if err != nil {
 		log.Printf("[Scheduler] failed to add expireOrders job: %v", err)
 		return
@@ -56,11 +57,31 @@ func (s *Scheduler) expireTenantPlans() {
 func (s *Scheduler) expireOrders() {
 	log.Println("[Scheduler] running expireOrders")
 
-	result := s.db.Exec("SELECT fn_expire_orders()")
-	if result.Error != nil {
-		log.Printf("[Scheduler] expireOrders error: %v", result.Error)
+	// Get all tenant schemas
+	var schemas []string
+	err := s.db.Raw(`
+		SELECT schema_name 
+		FROM information_schema.schemata 
+		WHERE schema_name NOT IN ('public', 'information_schema', 'pg_catalog', 'pg_toast')
+		  AND schema_name NOT LIKE 'pg_%'
+	`).Scan(&schemas).Error
+	
+	if err != nil {
+		log.Printf("[Scheduler] expireOrders error getting schemas: %v", err)
 		return
 	}
 
-	log.Println("[Scheduler] expireOrders done")
+	totalExpired := 0
+	for _, schema := range schemas {
+		var count int
+		err := s.db.Raw(`SELECT ` + schema + `.fn_expire_orders()`).Scan(&count).Error
+		if err != nil {
+			log.Printf("[Scheduler] expireOrders error in schema %s: %v", schema, err)
+			continue
+		}
+		totalExpired += count
+		log.Printf("[Scheduler] Expired %d orders in schema %s", count, schema)
+	}
+
+	log.Printf("[Scheduler] expireOrders done, total expired: %d", totalExpired)
 }

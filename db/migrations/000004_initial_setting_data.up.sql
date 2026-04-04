@@ -33,7 +33,7 @@ INSERT INTO public.setting (group_name, sub_group_name, name, value) VALUES
 
 -- Integration: Stripe Aidia
 ('integration', 'Stripe Aidia', 'stripe-aidia-secret-key', 'sk_test_51TA6Wf23GXia0A6PIIoraLAr2qptkqZCSF9g0qP2Kad4fb3NVAwOLqkICOqyXycJXoW2LnMJWEkFhdtCxNU3Gflj00KuDHUZ9N'),
-('integration', 'Stripe Aidia', 'stripe-aidia-webhook-secret', 'whsec_1f428ea2de4953a3dbf78a36de2e4a5eb66007d4b8949c1776583358d24153b6'),
+('integration', 'Stripe Aidia', 'stripe-aidia-webhook-secret', 'whsec_YwDQbH4puDsARWHpN8G6KHeuSgD3mzeK'),
 ('integration', 'Stripe Aidia', 'stripe-aidia-public-key', 'pk_test_51TA6Wf23GXia0A6P8MBZQxYjXMfk8B27glWFbMzyF5jjvIU1iEUGmFPttm5P4Oyc3qgNtl5QvsIK8wRCNdAVZoqu00kYvgMD8M'),
 
 -- Integration: Telegram

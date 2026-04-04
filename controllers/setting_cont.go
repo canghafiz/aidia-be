@@ -7,6 +7,9 @@ type SettingCont interface {
 	GetIntegration(context *gin.Context)
 	UpdateBySubgroupName(context *gin.Context)
 	UpdateTelegramBotToken(context *gin.Context)
-	GetClientTelegramAIPrompt(context *gin.Context)
-	UpdateClientTelegramAIPrompt(context *gin.Context)
+	GetClientIntegration(context *gin.Context)
+	UpdateClientIntegration(context *gin.Context)
+	GetClientAIPrompts(context *gin.Context)
+	GetClientAIPromptSection(context *gin.Context)
+	UpdateClientAIPromptSection(context *gin.Context)
 }

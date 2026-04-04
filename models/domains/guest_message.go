@@ -14,7 +14,7 @@ type GuestMessage struct {
 	Message           string    `gorm:"column:message"`
 	IsHuman           bool      `gorm:"column:is_human;not null;default:false"`
 	IsActive          bool      `gorm:"column:is_active;not null;default:true"`
-	TelegramMessageID *int      `gorm:"column:telegram_message_id;index:idx_guest_msg_telegram_id"`
+	PlatformMessageID *int      `gorm:"column:platform_message_id;index:idx_guest_msg_platform_id"`
 	Platform          string    `gorm:"column:platform;not null;default:'telegram';index:idx_guest_msg_platform"`
 	SessionID         string    `gorm:"column:session_id;index:idx_guest_msg_session"`
 	CreatedAt         time.Time `gorm:"column:created_at;autoCreateTime;index:idx_guest_msg_created"`

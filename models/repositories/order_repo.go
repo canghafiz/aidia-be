@@ -12,4 +12,6 @@ type OrderRepo interface {
 	GetByID(db *gorm.DB, schema string, id int) (*domains.Order, error)
 	UpdateStatus(db *gorm.DB, schema string, id int, status domains.OrderStatus) error
 	CreateOrderProducts(db *gorm.DB, schema string, products []domains.OrderProduct) error
+	GetCustomerByPhone(db *gorm.DB, schema, phone string) (*domains.Customer, error)
+	GetByCustomerID(db *gorm.DB, schema string, customerID int) ([]domains.Order, error)
 }

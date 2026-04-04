@@ -84,19 +84,16 @@ func (h *ChatHub) BroadcastToGuest(tenantID, guestID, data string) {
 	}
 }
 
-// BroadcastToTenant sends update to all guests in a tenant
+// BroadcastToTenant sends update only to the tenant-level channel (conversations list).
+// It does NOT broadcast to guest-specific channels — use BroadcastToGuest for that.
 func (h *ChatHub) BroadcastToTenant(tenantID, data string) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	for key, clients := range h.clients {
-		if key == tenantID || len(key) > len(tenantID) && key[:len(tenantID)+1] == tenantID+":" {
-			for ch := range clients {
-				select {
-				case ch <- data:
-				default:
-				}
-			}
+	for ch := range h.clients[tenantID] {
+		select {
+		case ch <- data:
+		default:
 		}
 	}
 }

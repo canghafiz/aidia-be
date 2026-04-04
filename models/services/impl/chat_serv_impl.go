@@ -7,6 +7,7 @@ import (
 	"backend/models/services"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,11 +15,12 @@ import (
 )
 
 type ChatServImpl struct {
-	Db             *gorm.DB
-	JwtKey         string
-	GuestRepo      repositories.GuestRepo
+	Db               *gorm.DB
+	JwtKey           string
+	GuestRepo        repositories.GuestRepo
 	GuestMessageRepo repositories.GuestMessageRepo
-	UserRepo       repositories.UsersRepo
+	UserRepo         repositories.UsersRepo
+	SettingRepo      repositories.SettingRepo
 }
 
 func NewChatServImpl(
@@ -27,6 +29,7 @@ func NewChatServImpl(
 	guestRepo repositories.GuestRepo,
 	guestMessageRepo repositories.GuestMessageRepo,
 	userRepo repositories.UsersRepo,
+	settingRepo repositories.SettingRepo,
 ) *ChatServImpl {
 	return &ChatServImpl{
 		Db:               db,
@@ -34,193 +37,227 @@ func NewChatServImpl(
 		GuestRepo:        guestRepo,
 		GuestMessageRepo: guestMessageRepo,
 		UserRepo:         userRepo,
+		SettingRepo:      settingRepo,
 	}
 }
 
-func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUID, pagination domains.Pagination) (interface{}, error) {
-	// Validate token
-	_, err := helpers.DecodeJWT(accessToken, serv.JwtKey)
-	if err != nil {
-		return nil, fmt.Errorf("invalid token")
+// resolveTenant validates token and returns (schema, tenantID, error).
+// guest.tenant_id = public.tenant.tenant_id, NOT the user_id (clientID).
+func (serv *ChatServImpl) resolveTenant(accessToken string, clientID uuid.UUID) (schema string, tenantID uuid.UUID, err error) {
+	if _, err = helpers.DecodeJWT(accessToken, serv.JwtKey); err != nil {
+		return "", uuid.Nil, fmt.Errorf("invalid token")
 	}
 
-	// Get tenant schema from user
 	user, err := serv.UserRepo.GetByUserId(serv.Db, clientID)
-	if err != nil || user == nil {
-		return nil, fmt.Errorf("user not found")
+	if err != nil {
+		return "", uuid.Nil, fmt.Errorf("user not found")
 	}
 
-	if user.TenantSchema == nil {
-		return nil, fmt.Errorf("tenant schema not found")
+	if user.TenantSchema == nil || *user.TenantSchema == "" {
+		return "", uuid.Nil, fmt.Errorf("tenant schema not found")
 	}
 
-	// Get conversations (guests) with their latest message
-	var guests []domains.Guest
-	var total int64
+	if user.Tenant == nil || user.Tenant.TenantID == uuid.Nil {
+		return "", uuid.Nil, fmt.Errorf("tenant not found")
+	}
 
-	tx := serv.Db.Table("guest").Where("tenant_id = ?", clientID)
-	tx.Count(&total)
+	return *user.TenantSchema, user.Tenant.TenantID, nil
+}
 
-	err = tx.Offset((pagination.Page - 1) * pagination.Limit).
-		Limit(pagination.Limit).
-		Order("last_message_at DESC").
-		Find(&guests).Error
+func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUID, pagination domains.Pagination) (interface{}, error) {
+	schema, tenantID, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build response
-	type ConversationResponse struct {
-		GuestID       uuid.UUID  `json:"guest_id"`
-		GuestName     string     `json:"guest_name"`
-		TelegramID    string     `json:"telegram_id"`
-		LastMessage   string     `json:"last_message"`
-		LastMessageAt *time.Time `json:"last_message_at"`
-		IsRead        bool       `json:"is_read"`
-		IsTakeOver    bool       `json:"is_take_over"`
+	guests, total, err := serv.GuestRepo.FindAllByTenantID(serv.Db, schema, tenantID, pagination)
+	if err != nil {
+		return nil, err
 	}
 
-	var responses []ConversationResponse
-	for _, guest := range guests {
-		// Get latest message
-		var latestMsg domains.GuestMessage
-		serv.Db.Table("guest_message").
-			Where("guest_id = ?", guest.ID).
-			Order("created_at DESC").
-			First(&latestMsg)
+	type ConversationItem struct {
+		GuestID          uuid.UUID  `json:"guest_id"`
+		Name             string     `json:"name"`
+		Identity         string     `json:"identity"`
+		Phone            string     `json:"phone"`
+		Username         string     `json:"username"`
+		PlatformChatID   string     `json:"platform_chat_id"`
+		PlatformUsername string     `json:"platform_username"`
+		LastMessage      string     `json:"last_message"`
+		LastMessageAt    *time.Time `json:"last_message_at"`
+		IsRead           bool       `json:"is_read"`
+		IsTakeOver       bool       `json:"is_take_over"`
+		IsActive         bool       `json:"is_active"`
+	}
 
+	items := make([]ConversationItem, 0, len(guests))
+	for _, g := range guests {
+		msgs, _ := serv.GuestMessageRepo.FindByGuestIDCursor(serv.Db, schema, g.ID, nil, 1)
 		lastMsg := ""
-		if latestMsg.ID != uuid.Nil {
-			lastMsg = latestMsg.Message
+		if len(msgs) > 0 {
+			lastMsg = msgs[0].Message
 		}
 
-		responses = append(responses, ConversationResponse{
-			GuestID:       guest.ID,
-			GuestName:     guest.Name,
-			TelegramID:    guest.TelegramChatID,
-			LastMessage:   lastMsg,
-			LastMessageAt: guest.LastMessageAt,
-			IsRead:        guest.IsRead,
-			IsTakeOver:    guest.IsTakeOver,
+		items = append(items, ConversationItem{
+			GuestID:          g.ID,
+			Name:             g.Name,
+			Identity:         g.Identity,
+			Phone:            g.Phone,
+			Username:         g.Username,
+			PlatformChatID:   g.PlatformChatID,
+			PlatformUsername: g.PlatformUsername,
+			LastMessage:      lastMsg,
+			LastMessageAt:    g.LastMessageAt,
+			IsRead:           g.IsRead,
+			IsTakeOver:       g.IsTakeOver,
+			IsActive:         g.IsActive,
 		})
 	}
 
 	return map[string]interface{}{
-		"conversations": responses,
+		"conversations": items,
 		"total":         total,
 		"page":          pagination.Page,
 		"limit":         pagination.Limit,
 	}, nil
 }
 
-func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, guestID uuid.UUID) (interface{}, error) {
-	// Validate token
-	_, err := helpers.DecodeJWT(accessToken, serv.JwtKey)
+func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, guestID uuid.UUID, beforeID *uuid.UUID, limit int) (interface{}, error) {
+	schema, _, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid token")
+		return nil, err
 	}
 
-	// Get schema
-	schema, err := helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get schema: %w", err)
-	}
-
-	// Get guest
+	// Schema is already scoped to the tenant — if guest exists here, access is valid
 	guest, err := serv.GuestRepo.FindByID(serv.Db, schema, guestID)
 	if err != nil {
 		return nil, fmt.Errorf("guest not found")
 	}
 
-	// Validate tenant access
-	if guest.TenantID == nil || *guest.TenantID != clientID {
-		return nil, fmt.Errorf("access denied")
+	if limit <= 0 || limit > 100 {
+		limit = 50
 	}
 
-	// Get messages
-	messages, err := serv.GuestMessageRepo.FindByGuestID(serv.Db, schema, guestID, 100)
+	messages, err := serv.GuestMessageRepo.FindByGuestIDCursor(serv.Db, schema, guestID, beforeID, limit)
 	if err != nil {
 		return nil, err
 	}
 
-	type MessageResponse struct {
+	type MessageItem struct {
 		ID        uuid.UUID `json:"id"`
 		Role      string    `json:"role"`
 		Message   string    `json:"message"`
 		Type      string    `json:"type"`
+		IsHuman   bool      `json:"is_human"`
+		Platform  string    `json:"platform"`
 		CreatedAt time.Time `json:"created_at"`
 	}
 
-	var msgResponses []MessageResponse
-	for _, msg := range messages {
-		msgResponses = append(msgResponses, MessageResponse{
-			ID:        msg.ID,
-			Role:      msg.Role,
-			Message:   msg.Message,
-			Type:      msg.Type,
-			CreatedAt: msg.CreatedAt,
-		})
+	// DB returns DESC (newest first); reverse to ASC (oldest first) for chat display.
+	// next_cursor always points to the oldest message in the original DESC slice (last element).
+	var nextCursor *string
+	if len(messages) == limit {
+		oldest := messages[len(messages)-1].ID.String()
+		nextCursor = &oldest
+	}
+
+	msgItems := make([]MessageItem, len(messages))
+	for i, m := range messages {
+		// fill in reverse order so index 0 = oldest
+		msgItems[len(messages)-1-i] = MessageItem{
+			ID:        m.ID,
+			Role:      m.Role,
+			Message:   m.Message,
+			Type:      m.Type,
+			IsHuman:   m.IsHuman,
+			Platform:  m.Platform,
+			CreatedAt: m.CreatedAt,
+		}
 	}
 
 	return map[string]interface{}{
 		"guest": map[string]interface{}{
-			"guest_id":       guest.ID,
-			"guest_name":     guest.Name,
-			"telegram_id":    guest.TelegramChatID,
-			"telegram_user":  guest.TelegramUsername,
-			"is_take_over":   guest.IsTakeOver,
-			"is_read":        guest.IsRead,
-			"conversation_state": guest.ConversationState,
+			"guest_id":          guest.ID,
+			"name":              guest.Name,
+			"identity":          guest.Identity,
+			"phone":             guest.Phone,
+			"username":          guest.Username,
+			"platform_chat_id":  guest.PlatformChatID,
+			"platform_username": guest.PlatformUsername,
+			"is_take_over":      guest.IsTakeOver,
+			"is_read":           guest.IsRead,
+			"is_active":         guest.IsActive,
+			"last_message_at":   guest.LastMessageAt,
 		},
-		"messages": msgResponses,
+		"messages":    msgItems,
+		"next_cursor": nextCursor,
+		"has_more":    nextCursor != nil,
 	}, nil
 }
 
-func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID uuid.UUID, message string) error {
-	// Validate token
-	if _, err := helpers.DecodeJWT(accessToken, serv.JwtKey); err != nil {
-		return fmt.Errorf("invalid token")
-	}
-
-	// Get schema
-	schema, err := helpers.GetSchema(serv.Db, serv.UserRepo, clientID)
+func (serv *ChatServImpl) MarkAsRead(accessToken string, clientID, guestID uuid.UUID) error {
+	schema, _, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
-		return fmt.Errorf("failed to get schema: %w", err)
+		return err
 	}
 
-	// Get guest
+	if _, err := serv.GuestRepo.FindByID(serv.Db, schema, guestID); err != nil {
+		return fmt.Errorf("guest not found")
+	}
+
+	return serv.GuestRepo.MarkAsRead(serv.Db, schema, guestID)
+}
+
+func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID uuid.UUID, message string) error {
+	schema, _, err := serv.resolveTenant(accessToken, clientID)
+	if err != nil {
+		return err
+	}
+
 	guest, err := serv.GuestRepo.FindByID(serv.Db, schema, guestID)
 	if err != nil {
 		return fmt.Errorf("guest not found")
 	}
 
-	// Validate tenant access
-	if guest.TenantID == nil || *guest.TenantID != clientID {
-		return fmt.Errorf("access denied")
-	}
-
-	// Create message
 	newMsg := domains.GuestMessage{
-		GuestID: guestID,
-		Role:    "assistant",
-		Type:    "text",
-		Message: message,
-		IsHuman: true,
+		GuestID:  guestID,
+		Role:     "assistant",
+		Type:     "text",
+		Message:  message,
+		IsHuman:  true,
 		IsActive: true,
 	}
 
-	err = serv.GuestMessageRepo.Create(serv.Db, schema, newMsg)
-	if err != nil {
+	if err := serv.GuestMessageRepo.Create(serv.Db, schema, newMsg); err != nil {
 		return err
 	}
 
-	// Update guest last_message_at
 	now := time.Now()
 	guest.LastMessageAt = &now
 	guest.IsRead = false
 	serv.GuestRepo.Update(serv.Db, schema, *guest)
 
-	// Broadcast to SSE hub
+	// Send to Telegram so the guest actually receives the reply
+	if guest.PlatformChatID != "" {
+		settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "Telegram")
+		if err == nil {
+			botToken := ""
+			for _, s := range settings {
+				if s.Name == "telegram-bot-token" {
+					botToken = s.Value
+					break
+				}
+			}
+			if botToken != "" {
+				tgClient := helpers.NewTelegramClient(botToken)
+				if _, err := tgClient.SendMessage(guest.PlatformChatID, message); err != nil {
+					log.Printf("[ChatServ] SendManualReply Telegram send error guest=%s: %v", guestID, err)
+				}
+			}
+		}
+	}
+
+	// Broadcast to dashboard SSE
 	eventData := map[string]interface{}{
 		"event": "new_message",
 		"data": map[string]interface{}{
@@ -229,15 +266,13 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 			"message":    message,
 			"role":       "assistant",
 			"is_human":   true,
-			"timestamp":  now.Format(time.RFC3339),
+			"created_at": now.Format(time.RFC3339),
 		},
 	}
-
 	eventJSON, _ := json.Marshal(eventData)
-	hub := helpers.GetChatHub()
-	hub.BroadcastToGuest(clientID.String(), guestID.String(), string(eventJSON))
-
-	// TODO: Send to Telegram API here (will be implemented separately)
+	h := helpers.GetChatHub()
+	h.BroadcastToGuest(clientID.String(), guestID.String(), string(eventJSON))
+	h.BroadcastToTenant(clientID.String(), string(eventJSON))
 
 	return nil
 }

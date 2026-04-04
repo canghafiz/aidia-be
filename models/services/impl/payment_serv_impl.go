@@ -21,13 +21,15 @@ import (
 )
 
 type PaymentServImpl struct {
-	Db             *gorm.DB
-	JwtKey         string
-	UserRepo       repositories.UsersRepo
-	TenantPlanRepo repositories.TenantPlanRepo
-	PlanRepo       repositories.PlanRepo
-	TenantRepo     repositories.TenantRepo
-	SettingRepo    repositories.SettingRepo
+	Db                 *gorm.DB
+	JwtKey             string
+	UserRepo           repositories.UsersRepo
+	TenantPlanRepo     repositories.TenantPlanRepo
+	PlanRepo           repositories.PlanRepo
+	TenantRepo         repositories.TenantRepo
+	SettingRepo        repositories.SettingRepo
+	OrderPaymentRepo   repositories.OrderPaymentRepo
+	OrderRepo          repositories.OrderRepo
 }
 
 func NewPaymentServImpl(
@@ -38,15 +40,19 @@ func NewPaymentServImpl(
 	planRepo repositories.PlanRepo,
 	tenantRepo repositories.TenantRepo,
 	settingRepo repositories.SettingRepo,
+	orderPaymentRepo repositories.OrderPaymentRepo,
+	orderRepo repositories.OrderRepo,
 ) *PaymentServImpl {
 	return &PaymentServImpl{
-		Db:             db,
-		JwtKey:         jwtKey,
-		UserRepo:       userRepo,
-		TenantPlanRepo: tenantPlanRepo,
-		PlanRepo:       planRepo,
-		TenantRepo:     tenantRepo,
-		SettingRepo:    settingRepo,
+		Db:                 db,
+		JwtKey:             jwtKey,
+		UserRepo:           userRepo,
+		TenantPlanRepo:     tenantPlanRepo,
+		PlanRepo:           planRepo,
+		TenantRepo:         tenantRepo,
+		SettingRepo:        settingRepo,
+		OrderPaymentRepo:   orderPaymentRepo,
+		OrderRepo:          orderRepo,
 	}
 }
 
@@ -458,7 +464,8 @@ func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uu
 		return nil, fmt.Errorf("CLIENT_PAYMENT_CANCEL_URL env not set")
 	}
 
-	// Placeholder — sesuaikan dengan order domain tenant
+	// TODO: Implement full order payment flow
+	// For now, return placeholder
 	return &paymentRes.CheckoutResponse{
 		InvoiceID:  orderID,
 		SessionID:  "",
@@ -490,9 +497,65 @@ func (serv *PaymentServImpl) HandleClientWebhook(schema string, payload []byte, 
 
 	switch event.Type {
 	case "invoice.paid":
-		log.Printf("[ClientWebhook] Payment success for schema: %s, event: %s", schema, event.ID)
+		invoiceID, ok := event.Data.Object["id"].(string)
+		if !ok {
+			return fmt.Errorf("invalid invoice data")
+		}
+
+		log.Printf("[ClientWebhook] Payment success for schema: %s, invoice: %s", schema, invoiceID)
+
+		// Update order payment status
+		orderPayment, err := serv.OrderPaymentRepo.GetByStripeInvoiceID(serv.Db, schema, invoiceID)
+		if err != nil {
+			log.Printf("[ClientWebhook] Order payment not found: %v", err)
+			return fmt.Errorf("order payment not found")
+		}
+
+		// Update payment status to Paid
+		err = serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, orderPayment.ID, domains.PaymentStatusPaid)
+		if err != nil {
+			log.Printf("[ClientWebhook] Failed to update payment status: %v", err)
+			return fmt.Errorf("failed to update payment status")
+		}
+
+		// Update order status to Confirmed
+		order, err := serv.OrderRepo.GetByID(serv.Db, schema, orderPayment.OrderID)
+		if err != nil {
+			log.Printf("[ClientWebhook] Order not found: %v", err)
+			return fmt.Errorf("order not found")
+		}
+
+		err = serv.OrderRepo.UpdateStatus(serv.Db, schema, order.ID, domains.OrderStatusConfirmed)
+		if err != nil {
+			log.Printf("[ClientWebhook] Failed to update order status: %v", err)
+			return fmt.Errorf("failed to update order status")
+		}
+
+		log.Printf("[ClientWebhook] Payment status updated to Paid for order #%d", order.ID)
+
 	case "invoice.payment_failed":
-		log.Printf("[ClientWebhook] Payment failed for schema: %s, event: %s", schema, event.ID)
+		invoiceID, ok := event.Data.Object["id"].(string)
+		if !ok {
+			return fmt.Errorf("invalid invoice data")
+		}
+
+		log.Printf("[ClientWebhook] Payment failed for schema: %s, invoice: %s", schema, invoiceID)
+
+		// Update order payment status to failed
+		orderPayment, err := serv.OrderPaymentRepo.GetByStripeInvoiceID(serv.Db, schema, invoiceID)
+		if err != nil {
+			log.Printf("[ClientWebhook] Order payment not found: %v", err)
+			return fmt.Errorf("order payment not found")
+		}
+
+		// Update payment status - mark as unpaid (will retry)
+		err = serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, orderPayment.ID, domains.PaymentStatusUnpaid)
+		if err != nil {
+			log.Printf("[ClientWebhook] Failed to update payment status: %v", err)
+			return fmt.Errorf("failed to update payment status")
+		}
+
+		log.Printf("[ClientWebhook] Payment status updated to Unpaid for order #%d", orderPayment.OrderID)
 	}
 
 	return nil

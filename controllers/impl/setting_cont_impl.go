@@ -137,11 +137,11 @@ func (cont *SettingContImpl) UpdateBySubgroupName(context *gin.Context) {
 // UpdateTelegramBotToken godoc
 // @Summary      Update Telegram Bot Token
 // @Description  Update Telegram bot token and auto-register webhook
-// @Tags         Telegram
+// @Tags         Settings
 // @Accept       json
 // @Produce      json
 // @Param        client_id  path  string  true  "Client ID"
-// @Param        request    body  telegram.UpdateBotTokenRequest  true  "Bot token request"
+// @Param        request    body  telegram.UpdateBotTokenRequest  true  "Update Bot Token Request"
 // @Success      200        {object}  helpers.ApiResponse
 // @Failure      400        {object}  helpers.ApiResponse
 // @Failure      401        {object}  helpers.ApiResponse
@@ -191,70 +191,103 @@ func (cont *SettingContImpl) UpdateTelegramBotToken(context *gin.Context) {
 	}
 }
 
-// GetClientTelegramAIPrompt godoc
-// @Summary      Get Client Telegram AI Prompt
-// @Description  Get custom AI prompt for Telegram bot (per client/tenant)
-// @Tags         Settings
+// GetClientAIPrompts godoc
+// @Summary      Get All AI Prompt Sections
+// @Description  Get all 5 AI prompt sections (product, delivery, operational, about-store, faq) for a tenant
+// @Tags         AI Prompts
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id  path  string  true  "Client ID"
-// @Success      200        {object}  helpers.ApiResponse{data=telegram.AIPromptResponse}
-// @Failure      401        {object}  helpers.ApiResponse
-// @Failure      500        {object}  helpers.ApiResponse
-// @Router       /client/{client_id}/settings/telegram-ai-prompt [get]
-func (cont *SettingContImpl) GetClientTelegramAIPrompt(context *gin.Context) {
-	jwtToken := helpers.GetJwtToken(context)
-
+// @Success      200  {object}  helpers.ApiResponse{data=req.AIPromptsResponse}
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/ai-prompts [get]
+func (cont *SettingContImpl) GetClientAIPrompts(context *gin.Context) {
 	clientID, err := helpers.ParseUUID(context, "client_id")
 	if err != nil {
 		exceptions.ErrorHandler(context, err)
 		return
 	}
 
-	// Get schema from client_id
 	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
 	if err != nil {
 		exceptions.ErrorHandler(context, err)
 		return
 	}
 
-	// Get prompt from setting
-	settingPrompt, err := cont.SettingServ.GetTelegramAIPrompt(jwtToken, schema)
+	prompts, err := cont.SettingServ.GetAIPrompts(schema)
 	if err != nil {
 		exceptions.ErrorHandler(context, err)
 		return
 	}
 
-	response := helpers.ApiResponse{
-		Success: true,
-		Code:    200,
-		Data: map[string]string{
-			"prompt": settingPrompt,
-		},
-	}
-
-	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
-	if errResponse != nil {
-		exceptions.ErrorHandler(context, errResponse)
-		return
-	}
+	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{Success: true, Code: 200, Data: prompts})
 }
 
-// UpdateClientTelegramAIPrompt godoc
-// @Summary      Update Client Telegram AI Prompt
-// @Description  Update custom AI prompt for Telegram bot (per client/tenant)
-// @Tags         Settings
-// @Accept       json
+// GetClientAIPromptSection godoc
+// @Summary      Get AI Prompt by Section
+// @Description  Get AI prompt for a specific section. Valid sections: product, delivery, operational, about-store, faq
+// @Tags         AI Prompts
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id  path  string  true  "Client ID"
-// @Param        request    body  telegram.UpdateAIPromptRequest  true  "Update AI Prompt Request"
-// @Success      200        {object}  helpers.ApiResponse
-// @Failure      400        {object}  helpers.ApiResponse
-// @Failure      401        {object}  helpers.ApiResponse
-// @Failure      500        {object}  helpers.ApiResponse
-// @Router       /client/{client_id}/settings/telegram-ai-prompt [patch]
-func (cont *SettingContImpl) UpdateClientTelegramAIPrompt(context *gin.Context) {
+// @Param        section    path  string  true  "Section name"  Enums(product, delivery, operational, about-store, faq)
+// @Success      200  {object}  helpers.ApiResponse{data=req.AIPromptSectionResponse}
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/ai-prompts/{section} [get]
+func (cont *SettingContImpl) GetClientAIPromptSection(context *gin.Context) {
+	clientID, err := helpers.ParseUUID(context, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	section := context.Param("section")
+	if section == "" {
+		exceptions.ErrorHandler(context, fmt.Errorf("section is required"))
+		return
+	}
+
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	prompts, err := cont.SettingServ.GetAIPrompts(schema)
+	if err != nil {
+		exceptions.ErrorHandler(context, err)
+		return
+	}
+
+	val, ok := prompts[section]
+	if !ok {
+		exceptions.ErrorHandler(context, fmt.Errorf("invalid section '%s': valid values are product, delivery, about-store, faq", section))
+		return
+	}
+
+	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{
+		Success: true, Code: 200,
+		Data: map[string]string{"section": section, "prompt": val},
+	})
+}
+
+// UpdateClientAIPromptSection godoc
+// @Summary      Update AI Prompt by Section
+// @Description  Update AI prompt for a specific section. Valid sections: product, delivery, operational, about-store, faq
+// @Tags         AI Prompts
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string                    true  "Client ID"
+// @Param        section    path  string                    true  "Section name"  Enums(product, delivery, operational, about-store, faq)
+// @Param        request    body  req.UpdateAIPromptRequest  true  "Prompt content"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/ai-prompts/{section} [patch]
+func (cont *SettingContImpl) UpdateClientAIPromptSection(context *gin.Context) {
 	jwtToken := helpers.GetJwtToken(context)
 
 	clientID, err := helpers.ParseUUID(context, "client_id")
@@ -263,40 +296,32 @@ func (cont *SettingContImpl) UpdateClientTelegramAIPrompt(context *gin.Context) 
 		return
 	}
 
-	var request struct {
-		Prompt string `json:"prompt" validate:"required,max=2000"`
+	section := context.Param("section")
+	if section == "" {
+		exceptions.ErrorHandler(context, fmt.Errorf("section is required"))
+		return
 	}
 
+	var request req.UpdateAIPromptRequest
 	if err := helpers.ReadFromRequestBody(context, &request); err != nil {
 		exceptions.ErrorHandler(context, err)
 		return
 	}
 
-	// Get schema from client_id (BUKAN dari token!)
 	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
 	if err != nil {
 		exceptions.ErrorHandler(context, err)
 		return
 	}
 
-	// Update prompt ke schema tenant yang benar
-	err = cont.SettingServ.UpdateTelegramAIPromptForSchema(jwtToken, schema, request.Prompt)
-	if err != nil {
+	if err := cont.SettingServ.UpdateAIPromptSection(jwtToken, schema, section, request.Prompt); err != nil {
 		exceptions.ErrorHandler(context, err)
 		return
 	}
 
-	response := helpers.ApiResponse{
-		Success: true,
-		Code:    200,
-		Data: map[string]string{
-			"message": "AI prompt updated successfully",
-		},
-	}
-
-	errResponse := helpers.WriteToResponseBody(context, response.Code, response)
-	if errResponse != nil {
-		exceptions.ErrorHandler(context, errResponse)
-		return
-	}
+	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{
+		Success: true, Code: 200,
+		Data: map[string]string{"message": fmt.Sprintf("AI prompt for section '%s' updated", section)},
+	})
 }
+

@@ -13,6 +13,13 @@ func NewOrderPaymentRepoImpl() *OrderPaymentRepoImpl {
 	return &OrderPaymentRepoImpl{}
 }
 
+func (repo *OrderPaymentRepoImpl) Create(db *gorm.DB, schema string, payment domains.OrderPayment) (*domains.OrderPayment, error) {
+	if err := db.Table(schema + ".order_payments").Create(&payment).Error; err != nil {
+		return nil, err
+	}
+	return &payment, nil
+}
+
 func (repo *OrderPaymentRepoImpl) GetAll(db *gorm.DB, schema string, pagination domains.Pagination) ([]domains.OrderPayment, int, error) {
 	var payments []domains.OrderPayment
 	var total int64
@@ -49,6 +56,19 @@ func (repo *OrderPaymentRepoImpl) GetByOrderID(db *gorm.DB, schema string, order
 	var payment domains.OrderPayment
 	if err := db.Raw(`
 		SELECT * FROM `+schema+`.order_payments WHERE order_id = ?`, orderID).
+		Scan(&payment).Error; err != nil {
+		return nil, err
+	}
+	if payment.ID == uuid.Nil {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &payment, nil
+}
+
+func (repo *OrderPaymentRepoImpl) GetByStripeInvoiceID(db *gorm.DB, schema, invoiceID string) (*domains.OrderPayment, error) {
+	var payment domains.OrderPayment
+	if err := db.Raw(`
+		SELECT * FROM `+schema+`.order_payments WHERE stripe_invoice_id = ?`, invoiceID).
 		Scan(&payment).Error; err != nil {
 		return nil, err
 	}

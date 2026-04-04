@@ -316,6 +316,22 @@ definitions:
     type: object
   impl.TelegramWebhookRequest:
     properties:
+      callback_query:
+        properties:
+          data:
+            type: string
+          from:
+            $ref: '#/definitions/impl.User'
+          id:
+            type: string
+          message:
+            properties:
+              chat:
+                $ref: '#/definitions/impl.Chat'
+              message_id:
+                type: integer
+            type: object
+        type: object
       message:
         properties:
           chat:
@@ -777,6 +793,36 @@ definitions:
     required:
     - name
     type: object
+  setting.AIPromptSectionResponse:
+    properties:
+      prompt:
+        description: The prompt text configured for this section
+        example: We are a restaurant open Sunday to Friday.
+        type: string
+      section:
+        description: Section name (product | delivery | operational | about-store
+          | faq)
+        example: about-store
+        type: string
+    type: object
+  setting.AIPromptsResponse:
+    properties:
+      about_store:
+        example: We are a restaurant located in Jakarta.
+        type: string
+      delivery:
+        example: We deliver to the following zones.
+        type: string
+      faq:
+        example: 1. Payment via Stripe. 2. Order expires in 15 minutes.
+        type: string
+      operational:
+        example: Open Sunday - Friday, 07:00 - 17:00.
+        type: string
+      product:
+        example: Show product name, price, photo, and description.
+        type: string
+    type: object
   setting.GroupResponse:
     properties:
       group_name:
@@ -802,11 +848,20 @@ definitions:
       sub_group_name:
         type: string
     type: object
+  setting.UpdateAIPromptRequest:
+    properties:
+      prompt:
+        description: The prompt text for this section. Can be empty to clear the prompt.
+        example: We are a restaurant open Sunday to Friday, serving authentic local
+          cuisine.
+        type: string
+    type: object
   setting.UpdateBySubgroupRequest:
     properties:
       settings:
         items:
           $ref: '#/definitions/setting.UpdateSettingItem'
+        minItems: 1
         type: array
     required:
     - settings
@@ -858,26 +913,6 @@ definitions:
         type: integer
       used_tokens:
         type: integer
-    type: object
-  telegram.AIPromptResponse:
-    properties:
-      prompt:
-        type: string
-    type: object
-  telegram.RequestPhoneRequest:
-    properties:
-      chat_id:
-        type: string
-    required:
-    - chat_id
-    type: object
-  telegram.UpdateAIPromptRequest:
-    properties:
-      prompt:
-        maxLength: 2000
-        type: string
-    required:
-    - prompt
     type: object
   telegram.UpdateBotTokenRequest:
     properties:
@@ -1130,10 +1165,10 @@ info:
   title: AI-Dia API
   version: "1.0"
 paths:
-  /api/v1/internal/telegram/{schema}/ai-prompt:
+  /api/v1/internal/telegram/{schema}/ai-context:
     get:
-      description: Get custom AI prompt for specific tenant schema (internal API for
-        n8n)
+      description: Returns AI prompts (5 sections) + live products + delivery zones
+        for a tenant. Called by n8n to build the full AI prompt.
       parameters:
       - description: Tenant Schema
         in: path
@@ -1146,55 +1181,14 @@ paths:
         "200":
           description: OK
           schema:
-            allOf:
-            - $ref: '#/definitions/helpers.ApiResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/telegram.AIPromptResponse'
-              type: object
+            additionalProperties: true
+            type: object
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      summary: Get AI Prompt for Schema (Internal API for n8n)
-      tags:
-      - Telegram
-  /api/v1/internal/telegram/{schema}/request-phone:
-    post:
-      description: Send keyboard with "Share Phone Number" button to user (internal
-        API for n8n)
-      parameters:
-      - description: Tenant Schema
-        in: path
-        name: schema
-        required: true
-        type: string
-      - description: Request Phone Request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/telegram.RequestPhoneRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      summary: Request Phone Number from User (Internal API for n8n)
+            additionalProperties: true
+            type: object
+      summary: Get AI Context for Schema (Internal API for n8n)
       tags:
       - Internal
   /api/v1/webhook/telegram/{schema}:
@@ -1456,94 +1450,109 @@ paths:
       - Auth
   /client/{client_id}/chats:
     get:
-      description: Get list of all conversations with pagination
+      description: |-
+        SSE stream. Sends event:init with full conversation list on connect, then event:update on any new activity.
+        Auth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).
       parameters:
-      - description: Client ID
+      - description: Client ID (UUID)
         in: path
         name: client_id
         required: true
         type: string
-      - description: Page
+      - description: JWT token (use when EventSource cannot set Authorization header)
+        in: query
+        name: token
+        type: string
+      - description: Page (default 1)
         in: query
         name: page
         type: integer
-      - description: Limit
+      - description: Conversations per page (default 50)
         in: query
         name: limit
         type: integer
       produces:
-      - application/json
+      - text/event-stream
       responses:
         "200":
-          description: OK
+          description: SSE stream — event:init | event:update | comment:heartbeat
           schema:
-            $ref: '#/definitions/helpers.ApiResponse'
+            type: string
         "401":
-          description: Unauthorized
+          description: event:error
           schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: Get all conversations
+            type: string
+      summary: List conversations (SSE)
       tags:
       - Chat
   /client/{client_id}/chats/{guest_id}:
     get:
-      description: Get detail of a conversation with messages
+      description: |-
+        SSE stream. On connect sends event:init with guest info + latest N messages (DESC, newest first).
+        Stays connected and streams event:message for new incoming messages.
+        **Lazy load older messages**: reconnect with ?before_id=<oldest_message_id> to get the previous batch.
+        When before_id is set the connection closes after delivering the batch (no streaming needed).
+        Auth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).
       parameters:
-      - description: Client ID
+      - description: Client ID (UUID)
         in: path
         name: client_id
         required: true
         type: string
-      - description: Guest ID
+      - description: Guest ID (UUID)
         in: path
         name: guest_id
         required: true
         type: string
+      - description: JWT token (for browser EventSource)
+        in: query
+        name: token
+        type: string
+      - description: 'Cursor: fetch messages older than this message ID (lazy load)'
+        in: query
+        name: before_id
+        type: string
+      - description: Messages per batch (default 50, max 100)
+        in: query
+        name: limit
+        type: integer
       produces:
-      - application/json
+      - text/event-stream
       responses:
         "200":
-          description: OK
+          description: SSE stream — event:init | event:message | comment:heartbeat
           schema:
-            $ref: '#/definitions/helpers.ApiResponse'
+            type: string
         "401":
-          description: Unauthorized
+          description: event:error
           schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
+            type: string
+        "404":
+          description: event:error
           schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: Get conversation detail
+            type: string
+      summary: Conversation detail — messages + real-time (SSE)
       tags:
       - Chat
   /client/{client_id}/chats/{guest_id}/messages:
     post:
       consumes:
       - application/json
-      description: Send manual reply to a guest (for manual mode)
+      description: Send a message as the operator (is_human=true, role=assistant)
       parameters:
-      - description: Client ID
+      - description: Client ID (UUID)
         in: path
         name: client_id
         required: true
         type: string
-      - description: Guest ID
+      - description: Guest ID (UUID)
         in: path
         name: guest_id
         required: true
         type: string
-      - description: Request body with message field
+      - description: '{ \'
         in: body
-        name: request
+        name: body
         required: true
         schema:
           type: object
@@ -1562,30 +1571,43 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
       security:
       - BearerAuth: []
-      summary: Send manual reply to guest
+      summary: Send manual reply
       tags:
       - Chat
-  /client/{client_id}/chats/stream:
-    get:
-      description: Subscribe to real-time chat updates via Server-Sent Events
+  /client/{client_id}/chats/{guest_id}/read:
+    patch:
+      description: Sets is_read=true for the guest conversation
       parameters:
-      - description: Client ID
+      - description: Client ID (UUID)
         in: path
         name: client_id
         required: true
         type: string
+      - description: Guest ID (UUID)
+        in: path
+        name: guest_id
+        required: true
+        type: string
       produces:
-      - text/event-stream
-      responses: {}
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
       security:
       - BearerAuth: []
-      summary: Chat real-time stream (SSE)
+      summary: Mark conversation as read
       tags:
       - Chat
   /client/{client_id}/customers:
@@ -2108,6 +2130,93 @@ paths:
       - BearerAuth: []
       tags:
       - Delivery Setting
+  /client/{client_id}/integration:
+    get:
+      description: Get all integration settings for client (Telegram, Stripe, etc.)
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/setting.SubgroupResponse'
+                  type: array
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Client Integration Settings
+      tags:
+      - Settings
+  /client/{client_id}/integration/{sub_group_name}:
+    patch:
+      consumes:
+      - application/json
+      description: Update all settings in a subgroup for client (Telegram, Stripe,
+        etc.)
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Subgroup Name (e.g., Telegram, Stripe Client)
+        in: path
+        name: sub_group_name
+        required: true
+        type: string
+      - description: Settings to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/setting.UpdateBySubgroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Update Client Integration Settings by Subgroup
+      tags:
+      - Settings
   /client/{client_id}/kitchen-display:
     get:
       description: Ambil semua order di kitchen display berdasarkan status
@@ -2995,9 +3104,10 @@ paths:
       - BearerAuth: []
       tags:
       - Product
-  /client/{client_id}/settings/telegram-ai-prompt:
+  /client/{client_id}/settings/ai-prompts:
     get:
-      description: Get custom AI prompt for Telegram bot (per client/tenant)
+      description: Get all 5 AI prompt sections (product, delivery, operational, about-store,
+        faq) for a tenant
       parameters:
       - description: Client ID
         in: path
@@ -3014,37 +3124,95 @@ paths:
             - $ref: '#/definitions/helpers.ApiResponse'
             - properties:
                 data:
-                  $ref: '#/definitions/telegram.AIPromptResponse'
+                  $ref: '#/definitions/setting.AIPromptsResponse'
               type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
         "401":
           description: Unauthorized
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
       security:
       - BearerAuth: []
-      summary: Get Client Telegram AI Prompt
+      summary: Get All AI Prompt Sections
       tags:
-      - Settings
-    patch:
-      consumes:
-      - application/json
-      description: Update custom AI prompt for Telegram bot (per client/tenant)
+      - AI Prompts
+  /client/{client_id}/settings/ai-prompts/{section}:
+    get:
+      description: 'Get AI prompt for a specific section. Valid sections: product,
+        delivery, operational, about-store, faq'
       parameters:
       - description: Client ID
         in: path
         name: client_id
         required: true
         type: string
-      - description: Update AI Prompt Request
+      - description: Section name
+        enum:
+        - product
+        - delivery
+        - operational
+        - about-store
+        - faq
+        in: path
+        name: section
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/setting.AIPromptSectionResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get AI Prompt by Section
+      tags:
+      - AI Prompts
+    patch:
+      consumes:
+      - application/json
+      description: 'Update AI prompt for a specific section. Valid sections: product,
+        delivery, operational, about-store, faq'
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Section name
+        enum:
+        - product
+        - delivery
+        - operational
+        - about-store
+        - faq
+        in: path
+        name: section
+        required: true
+        type: string
+      - description: Prompt content
         in: body
         name: request
         required: true
         schema:
-          $ref: '#/definitions/telegram.UpdateAIPromptRequest'
+          $ref: '#/definitions/setting.UpdateAIPromptRequest'
       produces:
       - application/json
       responses:
@@ -3060,15 +3228,11 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
       security:
       - BearerAuth: []
-      summary: Update Client Telegram AI Prompt
+      summary: Update AI Prompt by Section
       tags:
-      - Settings
+      - AI Prompts
   /client/{client_id}/telegram/bot-token:
     patch:
       consumes:
@@ -3080,7 +3244,7 @@ paths:
         name: client_id
         required: true
         type: string
-      - description: Bot token request
+      - description: Update Bot Token Request
         in: body
         name: request
         required: true
@@ -3109,7 +3273,7 @@ paths:
       - BearerAuth: []
       summary: Update Telegram Bot Token
       tags:
-      - Telegram
+      - Settings
   /payments/client/{client_id}/checkout/{order_id}:
     post:
       description: '[BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik

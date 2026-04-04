@@ -99,7 +99,7 @@ func (serv *SettingServImpl) UpdateBySubgroupName(accessToken, subGroupName stri
 		return err
 	}
 
-	settings := req.UpdateSettingItemsToSettings(subGroupName, requests.Settings)
+	settings := requests.ToSettings(subGroupName)
 
 	if err := serv.SettingRepo.UpdateBySubGroupName(serv.Db, schema, settings); err != nil {
 		log.Printf("[SettingRepo].UpdateBySubGroupName error: %v", err)
@@ -273,141 +273,105 @@ func (serv *SettingServImpl) GetJwtKey() string {
 	return serv.JwtKey
 }
 
-func (serv *SettingServImpl) GetTelegramAIPrompt(accessToken, schema string) (string, error) {
-	// Validate token
-	_, err := helpers.DecodeJWT(accessToken, serv.JwtKey)
-	if err != nil {
-		return "", fmt.Errorf("invalid token")
-	}
-
-	// Get prompt from setting
-	settingPrompt, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "Telegram Bot")
-	if err != nil {
-		return "", fmt.Errorf("failed to get settings: %w", err)
-	}
-
-	prompt := ""
-	for _, s := range settingPrompt {
-		if s.Name == "ai-prompt" {
-			prompt = s.Value
-			break
-		}
-	}
-
-	return prompt, nil
-}
-
-func (serv *SettingServImpl) UpdateTelegramAIPrompt(accessToken, prompt string) error {
-	// Validate token
-	_, err := helpers.DecodeJWT(accessToken, serv.JwtKey)
-	if err != nil {
-		return fmt.Errorf("invalid token")
-	}
-
-	// Get user schema
-	username, err := helpers.GetUsernameFromToken(accessToken, serv.JwtKey)
-	if err != nil {
-		return fmt.Errorf("failed to get user schema: %w", err)
-	}
-
-	schema := helpers.NormalizeSchema(*username)
-
-	// Get existing settings
-	existingSettings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "Telegram Bot")
-	if err != nil {
-		return fmt.Errorf("failed to get existing settings: %w", err)
-	}
-
-	// Check if ai-prompt already exists
-	found := false
-	for i, s := range existingSettings {
-		if s.Name == "ai-prompt" {
-			existingSettings[i].Value = prompt
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		// Create new setting
-		existingSettings = append(existingSettings, domains.Setting{
-			GroupName:    "integration",
-			SubgroupName: "Telegram Bot",
-			Name:         "ai-prompt",
-			Value:        prompt,
-		})
-	}
-
-	// Update settings
-	if err := serv.SettingRepo.UpdateBySubGroupName(serv.Db, schema, existingSettings); err != nil {
-		return fmt.Errorf("failed to update setting: %w", err)
-	}
-
-	return nil
-}
-
 func (serv *SettingServImpl) GetDb() *gorm.DB {
 	return serv.Db
 }
 
 func (serv *SettingServImpl) GetUserRepo() repositories.UsersRepo {
-	return nil // Will be passed from controller
+	// Return nil - not used in SettingServ
+	return nil
 }
 
-func (serv *SettingServImpl) UpdateTelegramAIPromptForSchema(accessToken, schema, prompt string) error {
-	// Validate token
+func (serv *SettingServImpl) GetByGroupAndSubGroupName(db *gorm.DB, schema, group, subGroup string) ([]interface{}, error) {
+	settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(db, schema, group, subGroup)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Convert to interface{} slice
+	result := make([]interface{}, len(settings))
+	for i, s := range settings {
+		result[i] = map[string]interface{}{
+			"name":  s.Name,
+			"value": s.Value,
+		}
+	}
+	return result, nil
+}
+
+func (serv *SettingServImpl) UpdateBySubGroupNameForSchema(db *gorm.DB, schema, subGroupName, name, value string) error {
+	// Direct SQL update
+	return db.Table(schema + ".setting").
+		Where("sub_group_name = ? AND name = ?", subGroupName, name).
+		Update("value", value).Error
+}
+
+// aiPromptSectionMap maps API section name to (sub_group_name, setting name)
+var aiPromptSectionMap = map[string][2]string{
+	"product":     {"AI Product", "ai-product-prompt"},
+	"delivery":    {"AI Delivery", "ai-delivery-prompt"},
+	"operational": {"AI Operational", "ai-operational-prompt"},
+	"about-store": {"AI About Store", "ai-about-store-prompt"},
+	"faq":         {"AI FAQ", "ai-faq-prompt"},
+}
+
+// GetAIPrompts returns all 4 AI prompt sections for a tenant schema (no auth required — used internally)
+func (serv *SettingServImpl) GetAIPrompts(schema string) (map[string]string, error) {
+	result := map[string]string{}
+	for section, meta := range aiPromptSectionMap {
+		settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "ai_prompt", meta[0])
+		if err != nil {
+			result[section] = ""
+			continue
+		}
+		val := ""
+		for _, s := range settings {
+			if s.Name == meta[1] {
+				val = s.Value
+				break
+			}
+		}
+		result[section] = val
+	}
+	return result, nil
+}
+
+// UpdateAIPromptSection upserts a single AI prompt section for a tenant schema
+func (serv *SettingServImpl) UpdateAIPromptSection(accessToken, schema, section, prompt string) error {
 	_, err := helpers.DecodeJWT(accessToken, serv.JwtKey)
 	if err != nil {
 		return fmt.Errorf("invalid token")
 	}
 
-	// Get existing settings for "Telegram Bot" sub_group
-	existingSettings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "Telegram Bot")
-	if err != nil {
-		return fmt.Errorf("failed to get existing settings: %w", err)
+	meta, ok := aiPromptSectionMap[section]
+	if !ok {
+		return fmt.Errorf("invalid section '%s': valid values are product, delivery, about-store, faq", section)
 	}
 
-	// Check if ai-prompt already exists in the settings
+	existing, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "ai_prompt", meta[0])
+	if err != nil {
+		return fmt.Errorf("failed to query settings: %w", err)
+	}
+
 	found := false
-	for i, s := range existingSettings {
-		if s.Name == "ai-prompt" {
-			existingSettings[i].Value = prompt
+	for _, s := range existing {
+		if s.Name == meta[1] {
 			found = true
 			break
 		}
 	}
 
-	if !found {
-		// ai-prompt tidak ada, cek apakah sub_group "Telegram Bot" ada
-		if len(existingSettings) == 0 {
-			// Sub_group "Telegram Bot" belum ada, buat baru semua
-			newSetting := domains.Setting{
-				GroupName:    "integration",
-				SubgroupName: "Telegram Bot",
-				Name:         "ai-prompt",
-				Value:        prompt,
-			}
-			if err := serv.SettingRepo.Create(serv.Db, schema, newSetting); err != nil {
-				return fmt.Errorf("failed to create setting: %w", err)
-			}
-		} else {
-			// Sub_group ada tapi ai-prompt tidak ada, append dan update
-			existingSettings = append(existingSettings, domains.Setting{
-				GroupName:    "integration",
-				SubgroupName: "Telegram Bot",
-				Name:         "ai-prompt",
-				Value:        prompt,
-			})
-			if err := serv.SettingRepo.UpdateBySubGroupName(serv.Db, schema, existingSettings); err != nil {
-				return fmt.Errorf("failed to update setting: %w", err)
-			}
-		}
-	} else {
-		// ai-prompt sudah ada, update
-		if err := serv.SettingRepo.UpdateBySubGroupName(serv.Db, schema, existingSettings); err != nil {
-			return fmt.Errorf("failed to update setting: %w", err)
-		}
+	if found {
+		return serv.SettingRepo.UpdateBySubGroupName(serv.Db, schema, []domains.Setting{
+			{GroupName: "ai_prompt", SubgroupName: meta[0], Name: meta[1], Value: prompt},
+		})
 	}
 
-	return nil
+	return serv.SettingRepo.Create(serv.Db, schema, domains.Setting{
+		GroupName:    "ai_prompt",
+		SubgroupName: meta[0],
+		Name:         meta[1],
+		Value:        prompt,
+	})
 }
+

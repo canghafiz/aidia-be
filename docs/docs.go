@@ -15,69 +15,16 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/internal/telegram/{schema}/ai-prompt": {
+        "/api/v1/internal/telegram/{schema}/ai-context": {
             "get": {
-                "description": "Get custom AI prompt for specific tenant schema (internal API for n8n)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Telegram"
-                ],
-                "summary": "Get AI Prompt for Schema (Internal API for n8n)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Tenant Schema",
-                        "name": "schema",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/helpers.ApiResponse"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/telegram.AIPromptResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/internal/telegram/{schema}/request-phone": {
-            "post": {
-                "description": "Send keyboard with \"Share Phone Number\" button to user (internal API for n8n)",
+                "description": "Returns AI prompts (5 sections) + live products + delivery zones for a tenant. Called by n8n to build the full AI prompt.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Internal"
                 ],
-                "summary": "Request Phone Number from User (Internal API for n8n)",
+                "summary": "Get AI Context for Schema (Internal API for n8n)",
                 "parameters": [
                     {
                         "type": "string",
@@ -85,34 +32,21 @@ const docTemplate = `{
                         "name": "schema",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Request Phone Request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/telegram.RequestPhoneRequest"
-                        }
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -542,137 +476,118 @@ const docTemplate = `{
         },
         "/client/{client_id}/chats": {
             "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get list of all conversations with pagination",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Chat"
-                ],
-                "summary": "Get all conversations",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Client ID",
-                        "name": "client_id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Page",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Limit",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/client/{client_id}/chats/stream": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Subscribe to real-time chat updates via Server-Sent Events",
+                "description": "SSE stream. Sends event:init with full conversation list on connect, then event:update on any new activity.\nAuth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).",
                 "produces": [
                     "text/event-stream"
                 ],
                 "tags": [
                     "Chat"
                 ],
-                "summary": "Chat real-time stream (SSE)",
+                "summary": "List conversations (SSE)",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Client ID",
-                        "name": "client_id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {}
-            }
-        },
-        "/client/{client_id}/chats/{guest_id}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Get detail of a conversation with messages",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Chat"
-                ],
-                "summary": "Get conversation detail",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Client ID",
+                        "description": "Client ID (UUID)",
                         "name": "client_id",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "Guest ID",
-                        "name": "guest_id",
-                        "in": "path",
-                        "required": true
+                        "description": "JWT token (use when EventSource cannot set Authorization header)",
+                        "name": "token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Conversations per page (default 50)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "SSE stream — event:init | event:update | comment:heartbeat",
                         "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
+                            "type": "string"
                         }
                     },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "event:error",
                         "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/chats/{guest_id}": {
+            "get": {
+                "description": "SSE stream. On connect sends event:init with guest info + latest N messages (DESC, newest first).\nStays connected and streams event:message for new incoming messages.\n**Lazy load older messages**: reconnect with ?before_id=\u003coldest_message_id\u003e to get the previous batch.\nWhen before_id is set the connection closes after delivering the batch (no streaming needed).\nAuth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Conversation detail — messages + real-time (SSE)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID (UUID)",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Guest ID (UUID)",
+                        "name": "guest_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "JWT token (for browser EventSource)",
+                        "name": "token",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cursor: fetch messages older than this message ID (lazy load)",
+                        "name": "before_id",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Messages per batch (default 50, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SSE stream — event:init | event:message | comment:heartbeat",
+                        "schema": {
+                            "type": "string"
                         }
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    "401": {
+                        "description": "event:error",
                         "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "event:error",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -685,7 +600,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Send manual reply to a guest (for manual mode)",
+                "description": "Send a message as the operator (is_human=true, role=assistant)",
                 "consumes": [
                     "application/json"
                 ],
@@ -695,25 +610,25 @@ const docTemplate = `{
                 "tags": [
                     "Chat"
                 ],
-                "summary": "Send manual reply to guest",
+                "summary": "Send manual reply",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Client ID",
+                        "description": "Client ID (UUID)",
                         "name": "client_id",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "Guest ID",
+                        "description": "Guest ID (UUID)",
                         "name": "guest_id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "Request body with message field",
-                        "name": "request",
+                        "description": "{ \\",
+                        "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -739,9 +654,56 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/chats/{guest_id}/read": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Sets is_read=true for the guest conversation",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Mark conversation as read",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID (UUID)",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    {
+                        "type": "string",
+                        "description": "Guest ID (UUID)",
+                        "name": "guest_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -1578,6 +1540,144 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/integration": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get all integration settings for client (Telegram, Stripe, etc.)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Get Client Integration Settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/setting.SubgroupResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/integration/{sub_group_name}": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update all settings in a subgroup for client (Telegram, Stripe, etc.)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Update Client Integration Settings by Subgroup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Subgroup Name (e.g., Telegram, Stripe Client)",
+                        "name": "sub_group_name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Settings to update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/setting.UpdateBySubgroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -2996,21 +3096,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/client/{client_id}/settings/telegram-ai-prompt": {
+        "/client/{client_id}/settings/ai-prompts": {
             "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Get custom AI prompt for Telegram bot (per client/tenant)",
+                "description": "Get all 5 AI prompt sections (product, delivery, operational, about-store, faq) for a tenant",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Settings"
+                    "AI Prompts"
                 ],
-                "summary": "Get Client Telegram AI Prompt",
+                "summary": "Get All AI Prompt Sections",
                 "parameters": [
                     {
                         "type": "string",
@@ -3032,11 +3132,17 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/telegram.AIPromptResponse"
+                                            "$ref": "#/definitions/setting.AIPromptsResponse"
                                         }
                                     }
                                 }
                             ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
                         }
                     },
                     "401": {
@@ -3044,9 +3150,75 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/settings/ai-prompts/{section}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Get AI prompt for a specific section. Valid sections: product, delivery, operational, about-store, faq",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI Prompts"
+                ],
+                "summary": "Get AI Prompt by Section",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
                     },
-                    "500": {
-                        "description": "Internal Server Error",
+                    {
+                        "enum": [
+                            "product",
+                            "delivery",
+                            "operational",
+                            "about-store",
+                            "faq"
+                        ],
+                        "type": "string",
+                        "description": "Section name",
+                        "name": "section",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/setting.AIPromptSectionResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -3059,7 +3231,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update custom AI prompt for Telegram bot (per client/tenant)",
+                "description": "Update AI prompt for a specific section. Valid sections: product, delivery, operational, about-store, faq",
                 "consumes": [
                     "application/json"
                 ],
@@ -3067,9 +3239,9 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Settings"
+                    "AI Prompts"
                 ],
-                "summary": "Update Client Telegram AI Prompt",
+                "summary": "Update AI Prompt by Section",
                 "parameters": [
                     {
                         "type": "string",
@@ -3079,12 +3251,26 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Update AI Prompt Request",
+                        "enum": [
+                            "product",
+                            "delivery",
+                            "operational",
+                            "about-store",
+                            "faq"
+                        ],
+                        "type": "string",
+                        "description": "Section name",
+                        "name": "section",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Prompt content",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/telegram.UpdateAIPromptRequest"
+                            "$ref": "#/definitions/setting.UpdateAIPromptRequest"
                         }
                     }
                 ],
@@ -3103,12 +3289,6 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/helpers.ApiResponse"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -3131,7 +3311,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Telegram"
+                    "Settings"
                 ],
                 "summary": "Update Telegram Bot Token",
                 "parameters": [
@@ -3143,7 +3323,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Bot token request",
+                        "description": "Update Bot Token Request",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -5192,6 +5372,31 @@ const docTemplate = `{
         "impl.TelegramWebhookRequest": {
             "type": "object",
             "properties": {
+                "callback_query": {
+                    "type": "object",
+                    "properties": {
+                        "data": {
+                            "type": "string"
+                        },
+                        "from": {
+                            "$ref": "#/definitions/impl.User"
+                        },
+                        "id": {
+                            "type": "string"
+                        },
+                        "message": {
+                            "type": "object",
+                            "properties": {
+                                "chat": {
+                                    "$ref": "#/definitions/impl.Chat"
+                                },
+                                "message_id": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
                 "message": {
                     "type": "object",
                     "properties": {
@@ -5884,6 +6089,46 @@ const docTemplate = `{
                 }
             }
         },
+        "setting.AIPromptSectionResponse": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "description": "The prompt text configured for this section",
+                    "type": "string",
+                    "example": "We are a restaurant open Sunday to Friday."
+                },
+                "section": {
+                    "description": "Section name (product | delivery | operational | about-store | faq)",
+                    "type": "string",
+                    "example": "about-store"
+                }
+            }
+        },
+        "setting.AIPromptsResponse": {
+            "type": "object",
+            "properties": {
+                "about_store": {
+                    "type": "string",
+                    "example": "We are a restaurant located in Jakarta."
+                },
+                "delivery": {
+                    "type": "string",
+                    "example": "We deliver to the following zones."
+                },
+                "faq": {
+                    "type": "string",
+                    "example": "1. Payment via Stripe. 2. Order expires in 15 minutes."
+                },
+                "operational": {
+                    "type": "string",
+                    "example": "Open Sunday - Friday, 07:00 - 17:00."
+                },
+                "product": {
+                    "type": "string",
+                    "example": "Show product name, price, photo, and description."
+                }
+            }
+        },
         "setting.GroupResponse": {
             "type": "object",
             "properties": {
@@ -5923,6 +6168,16 @@ const docTemplate = `{
                 }
             }
         },
+        "setting.UpdateAIPromptRequest": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "description": "The prompt text for this section. Can be empty to clear the prompt.",
+                    "type": "string",
+                    "example": "We are a restaurant open Sunday to Friday, serving authentic local cuisine."
+                }
+            }
+        },
         "setting.UpdateBySubgroupRequest": {
             "type": "object",
             "required": [
@@ -5931,6 +6186,7 @@ const docTemplate = `{
             "properties": {
                 "settings": {
                     "type": "array",
+                    "minItems": 1,
                     "items": {
                         "$ref": "#/definitions/setting.UpdateSettingItem"
                     }
@@ -6007,37 +6263,6 @@ const docTemplate = `{
                 },
                 "used_tokens": {
                     "type": "integer"
-                }
-            }
-        },
-        "telegram.AIPromptResponse": {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string"
-                }
-            }
-        },
-        "telegram.RequestPhoneRequest": {
-            "type": "object",
-            "required": [
-                "chat_id"
-            ],
-            "properties": {
-                "chat_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "telegram.UpdateAIPromptRequest": {
-            "type": "object",
-            "required": [
-                "prompt"
-            ],
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "maxLength": 2000
                 }
             }
         },

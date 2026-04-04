@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS :schema_name.guest (
     is_take_over          BOOLEAN      NOT NULL DEFAULT FALSE,
     is_read               BOOLEAN      NOT NULL DEFAULT FALSE,
     is_active             BOOLEAN      NOT NULL DEFAULT TRUE,
-    telegram_chat_id      VARCHAR(100),
-    telegram_username     VARCHAR(100),
+    platform_chat_id      VARCHAR(100),
+    platform_username     VARCHAR(100),
     last_message_at       TIMESTAMPTZ,
     conversation_state    JSONB DEFAULT '{}'::jsonb,
     created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -32,7 +32,7 @@ CREATE INDEX idx_guest_identity ON :schema_name.guest (identity);
 CREATE INDEX idx_guest_active_read ON :schema_name.guest (is_active, is_read);
 CREATE INDEX idx_guest_ai_thread_id ON :schema_name.guest (ai_thread_id);
 CREATE INDEX idx_guest_created_at ON :schema_name.guest (created_at);
-CREATE INDEX idx_guest_telegram_chat ON :schema_name.guest (telegram_chat_id);
+CREATE INDEX idx_guest_platform_chat ON :schema_name.guest (platform_chat_id);
 CREATE INDEX idx_guest_last_message ON :schema_name.guest (last_message_at);
 CREATE INDEX idx_guest_tenant ON :schema_name.guest (tenant_id);
 
@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS :schema_name.guest_message (
     message                TEXT,
     is_human               BOOLEAN     NOT NULL DEFAULT FALSE,
     is_active              BOOLEAN     NOT NULL DEFAULT TRUE,
-    telegram_message_id    INTEGER,
+    platform_message_id    INTEGER,
     platform               VARCHAR(30) NOT NULL DEFAULT 'telegram',
     session_id             VARCHAR(100),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -60,29 +60,9 @@ CREATE TABLE IF NOT EXISTS :schema_name.guest_message (
 );
 
 CREATE INDEX idx_guest_msg_guest_created ON :schema_name.guest_message (guest_id, created_at);
-CREATE INDEX idx_guest_msg_telegram_id ON :schema_name.guest_message (telegram_message_id);
+CREATE INDEX idx_guest_msg_platform_id ON :schema_name.guest_message (platform_message_id);
 CREATE INDEX idx_guest_msg_platform ON :schema_name.guest_message (platform);
 CREATE INDEX idx_guest_msg_session ON :schema_name.guest_message (session_id);
-
--- ============================================================
--- Guest Message Log
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS :schema_name.guest_message_log (
-                                                              id                   UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    guest_id             UUID        NOT NULL,
-    info                 VARCHAR(255),
-    log                  TEXT,
-    system_error_message TEXT,
-    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT fk_guest_message_log_guest
-    FOREIGN KEY (guest_id) REFERENCES :schema_name.guest (id)
-    ON DELETE RESTRICT
-    );
-
-CREATE INDEX idx_guest_msg_log_guest_created ON :schema_name.guest_message_log (guest_id, created_at);
 
 -- ============================================================
 -- Product
@@ -247,7 +227,13 @@ CREATE TABLE IF NOT EXISTS :schema_name.order_payments (
     payment_status :schema_name.payment_status NOT NULL DEFAULT 'Unpaid',
     payment_method VARCHAR(50)                 NOT NULL DEFAULT 'stripe',
     total_price    NUMERIC(15,2)               NOT NULL DEFAULT 0,
-    expire_at      TIMESTAMPTZ                 NOT NULL DEFAULT NOW() + INTERVAL '24 hours',
+    expire_at      TIMESTAMPTZ                 NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
+    stripe_session_id VARCHAR(255),
+    stripe_session_url TEXT,
+    stripe_payment_status VARCHAR(50),
+    stripe_invoice_id VARCHAR(255),
+    paid_at        TIMESTAMPTZ,
+    is_paid        BOOLEAN                     NOT NULL DEFAULT FALSE,
     created_at     TIMESTAMPTZ                 NOT NULL DEFAULT NOW(),
     updated_at     TIMESTAMPTZ                 NOT NULL DEFAULT NOW(),
 
@@ -262,8 +248,8 @@ CREATE INDEX idx_order_payments_status   ON :schema_name.order_payments (payment
 CREATE OR REPLACE FUNCTION :schema_name.fn_insert_order_payment()
     RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO :schema_name.order_payments (order_id, payment_status, payment_method, total_price)
-    VALUES (NEW.id, 'Unpaid':::schema_name.payment_status, 'stripe', NEW.total_price);
+    INSERT INTO :schema_name.order_payments (order_id, payment_status, payment_method, total_price, expire_at)
+    VALUES (NEW.id, 'Unpaid':::schema_name.payment_status, 'stripe', NEW.total_price, NEW.created_at + INTERVAL '15 minutes');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -298,7 +284,17 @@ ON CONFLICT (sub_group_name, name) DO NOTHING;
 
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
     ('integration', 'Stripe Client', 'stripe-client-secret-key', '{stripe-client-secret-key}'),
+    ('integration', 'Stripe Client', 'stripe-client-public-key', '{stripe-client-public-key}'),
     ('integration', 'Stripe Client', 'stripe-client-webhook-secret', '{stripe-client-webhook-secret}');
+
+-- AI Prompt settings (per section)
+INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
+    ('ai_prompt', 'AI Product',     'ai-product-prompt',     'Explain our products clearly when customers ask. Mention name, price, and description. If a product is out of stock, inform the customer and suggest alternatives if available.'),
+    ('ai_prompt', 'AI Delivery',    'ai-delivery-prompt',    'We offer delivery to the zones listed. If the customer''s area is not listed, kindly inform them we do not cover that area yet.'),
+    ('ai_prompt', 'AI Operational', 'ai-operational-prompt', 'We are open Monday to Saturday, 08:00 - 21:00. We are closed on Sundays and national holidays.'),
+    ('ai_prompt', 'AI About Store', 'ai-about-store-prompt', 'We are a local store. We are here to help you find the right products and place your order. Feel free to ask anything about our store.'),
+    ('ai_prompt', 'AI FAQ',         'ai-faq-prompt',         'Q: How do I place an order? A: Just tell me you want to order and I will guide you. Q: Can I cancel? A: Contact us before the order is processed. Q: How long is delivery? A: Estimated 30-60 minutes.')
+ON CONFLICT (sub_group_name, name) DO NOTHING;
 
 -- ============================================================
 -- Kitchen Order
@@ -374,3 +370,36 @@ CREATE TRIGGER trg_insert_kitchen_order_on_confirmed
     AFTER UPDATE ON :schema_name.orders
     FOR EACH ROW
 EXECUTE FUNCTION :schema_name.fn_insert_kitchen_order_on_confirmed();
+
+-- ============================================================
+-- Function: Expire Orders (run by scheduler every 1 minute)
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION :schema_name.fn_expire_orders()
+RETURNS INTEGER AS $$
+DECLARE
+    expired_count INTEGER;
+BEGIN
+    -- Update expired order_payments
+    UPDATE :schema_name.order_payments
+    SET payment_status = 'Voided'
+    WHERE payment_status = 'Unpaid'
+      AND expire_at < NOW();
+    
+    GET DIAGNOSTICS expired_count = ROW_COUNT;
+    
+    -- Update corresponding orders to Cancelled
+    UPDATE :schema_name.orders
+    SET status = 'Cancelled'
+    WHERE id IN (
+        SELECT order_id 
+        FROM :schema_name.order_payments 
+        WHERE payment_status = 'Voided'
+    )
+    AND status = 'Pending';
+    
+    RAISE NOTICE 'Expired % unpaid orders', expired_count;
+    
+    RETURN expired_count;
+END;
+$$ LANGUAGE plpgsql;

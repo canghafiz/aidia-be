@@ -98,3 +98,46 @@ func (repo *OrderRepoImpl) UpdateStatus(db *gorm.DB, schema string, id int, stat
 func (repo *OrderRepoImpl) CreateOrderProducts(db *gorm.DB, schema string, products []domains.OrderProduct) error {
 	return db.Table(schema + ".order_products").Create(&products).Error
 }
+
+func (repo *OrderRepoImpl) GetCustomerByPhone(db *gorm.DB, schema, phone string) (*domains.Customer, error) {
+	var customer domains.Customer
+	// Search customer by phone_number (remove + prefix if exists)
+	cleanPhone := phone
+	if len(phone) > 0 && phone[0] == '+' {
+		cleanPhone = phone[1:]
+	}
+	
+	if err := db.Table(schema + ".customer").
+		Where("phone_country_code || phone_number = ? OR phone_number = ?", cleanPhone, cleanPhone).
+		First(&customer).Error; err != nil {
+		return nil, err
+	}
+	return &customer, nil
+}
+
+func (repo *OrderRepoImpl) GetByCustomerID(db *gorm.DB, schema string, customerID int) ([]domains.Order, error) {
+	var orders []domains.Order
+	if err := db.Table(schema + ".orders").
+		Where("customer_id = ?", customerID).
+		Order("created_at DESC").
+		Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	
+	// Load products and payment for each order
+	for i, o := range orders {
+		var products []domains.OrderProduct
+		if err := db.Raw(`SELECT * FROM `+schema+`.order_products WHERE order_id = ?`, o.ID).
+			Scan(&products).Error; err == nil {
+			orders[i].Products = products
+		}
+
+		var payment domains.OrderPayment
+		if err := db.Raw(`SELECT * FROM `+schema+`.order_payments WHERE order_id = ?`, o.ID).
+			Scan(&payment).Error; err == nil {
+			orders[i].Payment = &payment
+		}
+	}
+	
+	return orders, nil
+}

@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"backend/exceptions"
 	"backend/helpers"
 	"backend/models/domains"
 	"backend/models/repositories"
@@ -9,18 +8,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 type ChatContImpl struct {
-	ChatServ   services.ChatServ
-	GuestRepo  repositories.GuestRepo
-	UserRepo   repositories.UsersRepo
-	Db         *gorm.DB
-	JwtKey     string
+	ChatServ  services.ChatServ
+	GuestRepo repositories.GuestRepo
+	UserRepo  repositories.UsersRepo
+	Db        *gorm.DB
+	JwtKey    string
 }
 
 func NewChatContImpl(
@@ -39,171 +40,110 @@ func NewChatContImpl(
 	}
 }
 
-// GetConversations godoc
-// @Summary      Get all conversations
-// @Description  Get list of all conversations with pagination
-// @Tags         Chat
-// @Produce      json
-// @Security     BearerAuth
-// @Param        client_id  path      string  true  "Client ID"
-// @Param        page       query     int     false "Page"
-// @Param        limit      query     int     false "Limit"
-// @Success      200        {object}  helpers.ApiResponse
-// @Failure      401        {object}  helpers.ApiResponse
-// @Failure      500        {object}  helpers.ApiResponse
-// @Router       /client/{client_id}/chats [get]
-func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
-	accessToken := helpers.GetJwtToken(ctx)
-
-	clientID, err := helpers.ParseUUID(ctx, "client_id")
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
+// sseToken reads token from Authorization header or ?token= query param.
+// Browsers using EventSource cannot set custom headers, so ?token= is the fallback.
+func sseToken(ctx *gin.Context) string {
+	if t := helpers.GetJwtToken(ctx); t != "" {
+		return t
 	}
-
-	// Get pagination
-	page := ctx.DefaultQuery("page", "1")
-	limit := ctx.DefaultQuery("limit", "20")
-
-	pagination := domains.Pagination{}
-	fmt.Sscanf(page, "%d", &pagination.Page)
-	fmt.Sscanf(limit, "%d", &pagination.Limit)
-
-	result, err := cont.ChatServ.GetConversations(accessToken, clientID, pagination)
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-
-	response := helpers.ApiResponse{Success: true, Code: 200, Data: result}
-	if err := helpers.WriteToResponseBody(ctx, response.Code, response); err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
+	return ctx.Query("token")
 }
 
-// GetConversationDetail godoc
-// @Summary      Get conversation detail
-// @Description  Get detail of a conversation with messages
-// @Tags         Chat
-// @Produce      json
-// @Security     BearerAuth
-// @Param        client_id  path  string  true  "Client ID"
-// @Param        guest_id   path  string  true  "Guest ID"
-// @Success      200        {object}  helpers.ApiResponse
-// @Failure      401        {object}  helpers.ApiResponse
-// @Failure      500        {object}  helpers.ApiResponse
-// @Router       /client/{client_id}/chats/{guest_id} [get]
-func (cont *ChatContImpl) GetConversationDetail(ctx *gin.Context) {
-	accessToken := helpers.GetJwtToken(ctx)
-
-	clientID, err := helpers.ParseUUID(ctx, "client_id")
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-
-	guestID, err := helpers.ParseUUID(ctx, "guest_id")
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-
-	result, err := cont.ChatServ.GetConversationDetail(accessToken, clientID, guestID)
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-
-	response := helpers.ApiResponse{Success: true, Code: 200, Data: result}
-	if err := helpers.WriteToResponseBody(ctx, response.Code, response); err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-}
-
-// Stream godoc
-// @Summary      Chat real-time stream (SSE)
-// @Description  Subscribe to real-time chat updates via Server-Sent Events
-// @Tags         Chat
-// @Produce      text/event-stream
-// @Security     BearerAuth
-// @Param        client_id  path  string  true  "Client ID"
-// @Router       /client/{client_id}/chats/stream [get]
-func (cont *ChatContImpl) Stream(ctx *gin.Context) {
-	accessToken := helpers.GetJwtToken(ctx)
-
-	clientID, err := helpers.ParseUUID(ctx, "client_id")
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-
-	// Validate token
-	if _, err := helpers.DecodeJWT(accessToken, cont.JwtKey); err != nil {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("invalid token"))
-		return
-	}
-
-	// Get tenant schema from user
-	user, err := cont.UserRepo.GetByUserId(cont.Db, clientID)
-	if err != nil {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("user not found"))
-		return
-	}
-
-	if user.TenantSchema == nil || *user.TenantSchema == "" {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("tenant schema not found"))
-		return
-	}
-
-	schema := helpers.NormalizeSchema(*user.TenantSchema)
-	tenantID := clientID.String()
-
-	// Set SSE headers
+// sseHeaders sets all required SSE + CORS headers.
+func sseHeaders(ctx *gin.Context) {
 	ctx.Header("Content-Type", "text/event-stream")
 	ctx.Header("Cache-Control", "no-cache")
 	ctx.Header("Connection", "keep-alive")
 	ctx.Header("Access-Control-Allow-Origin", "*")
+	ctx.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Cache-Control")
+	ctx.Header("Access-Control-Expose-Headers", "Content-Type")
 	ctx.Header("X-Accel-Buffering", "no")
+}
 
-	// Subscribe to hub (all guests in tenant)
-	h := helpers.GetChatHub()
-	ch := h.SubscribeToTenant(tenantID)
-	defer func() {
-		h.Unsubscribe(tenantID, "", ch)
-	}()
+// writeSSE writes a named SSE event and flushes. Returns false on write error.
+func writeSSE(ctx *gin.Context, eventType string, data interface{}) bool {
+	b, _ := json.Marshal(data)
+	_, err := fmt.Fprintf(ctx.Writer, "event: %s\ndata: %s\n\n", eventType, b)
+	ctx.Writer.Flush()
+	return err == nil
+}
 
-	// Send initial event
-	initEvent := map[string]interface{}{
-		"event": "connected",
-		"data": map[string]interface{}{
-			"message":     "Connected to chat stream",
-			"tenant_id":   tenantID,
-			"schema":      schema,
-			"timestamp":   time.Now().Format(time.RFC3339),
-		},
-	}
-	initData, _ := json.Marshal(initEvent)
-	if _, err := fmt.Fprintf(ctx.Writer, "data: %s\n\n", initData); err != nil {
-		log.Printf("[ChatSSE] write init error: %v", err)
+// GetConversations godoc
+// @Summary      List conversations (SSE)
+// @Description  SSE stream. Sends event:init with full conversation list on connect, then event:update on any new activity.
+// @Description  Auth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).
+// @Tags         Chat
+// @Produce      text/event-stream
+// @Param        client_id  path   string  true   "Client ID (UUID)"
+// @Param        token      query  string  false  "JWT token (use when EventSource cannot set Authorization header)"
+// @Param        page       query  int     false  "Page (default 1)"
+// @Param        limit      query  int     false  "Conversations per page (default 50)"
+// @Success      200  {string}  string  "SSE stream — event:init | event:update | comment:heartbeat"
+// @Failure      401  {string}  string  "event:error"
+// @Router       /client/{client_id}/chats [get]
+func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
+	accessToken := sseToken(ctx)
+
+	clientID, err := uuid.Parse(ctx.Param("client_id"))
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
 		return
 	}
-	ctx.Writer.Flush()
 
-	// Listen for updates or disconnect
+	if _, err := helpers.DecodeJWT(accessToken, cont.JwtKey); err != nil {
+		ctx.AbortWithStatusJSON(401, gin.H{"error": "invalid token"})
+		return
+	}
+
+	page, limit := 1, 50
+	if raw := ctx.Query("page"); raw != "" {
+		if n, e := strconv.Atoi(raw); e == nil && n > 0 {
+			page = n
+		}
+	}
+	if raw := ctx.Query("limit"); raw != "" {
+		if n, e := strconv.Atoi(raw); e == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	sseHeaders(ctx)
+
+	result, err := cont.ChatServ.GetConversations(accessToken, clientID, domains.Pagination{Page: page, Limit: limit})
+	if err != nil {
+		writeSSE(ctx, "error", gin.H{"message": err.Error()})
+		return
+	}
+
+	if !writeSSE(ctx, "init", result) {
+		return
+	}
+
+	// Subscribe to all activity for this tenant
+	h := helpers.GetChatHub()
+	tenantID := clientID.String()
+	ch := h.SubscribeToTenant(tenantID)
+	defer h.Unsubscribe(tenantID, "", ch)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 	clientGone := ctx.Request.Context().Done()
+
 	for {
 		select {
 		case <-clientGone:
-			log.Printf("[ChatSSE] client disconnected, tenant: %s", tenantID)
+			log.Printf("[ChatSSE:list] client disconnected tenant=%s", tenantID)
 			return
+		case <-ticker.C:
+			if _, err := fmt.Fprintf(ctx.Writer, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			ctx.Writer.Flush()
 		case msg, ok := <-ch:
 			if !ok {
 				return
 			}
-			if _, err := fmt.Fprintf(ctx.Writer, "data: %s\n\n", msg); err != nil {
-				log.Printf("[ChatSSE] write error: %v", err)
+			if _, err := fmt.Fprintf(ctx.Writer, "event: update\ndata: %s\n\n", msg); err != nil {
 				return
 			}
 			ctx.Writer.Flush()
@@ -211,59 +151,186 @@ func (cont *ChatContImpl) Stream(ctx *gin.Context) {
 	}
 }
 
+// GetConversationDetail godoc
+// @Summary      Conversation detail — messages + real-time (SSE)
+// @Description  SSE stream. On connect sends event:init with guest info + latest N messages (DESC, newest first).
+// @Description  Stays connected and streams event:message for new incoming messages.
+// @Description  **Lazy load older messages**: reconnect with ?before_id=<oldest_message_id> to get the previous batch.
+// @Description  When before_id is set the connection closes after delivering the batch (no streaming needed).
+// @Description  Auth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).
+// @Tags         Chat
+// @Produce      text/event-stream
+// @Param        client_id  path   string  true   "Client ID (UUID)"
+// @Param        guest_id   path   string  true   "Guest ID (UUID)"
+// @Param        token      query  string  false  "JWT token (for browser EventSource)"
+// @Param        before_id  query  string  false  "Cursor: fetch messages older than this message ID (lazy load)"
+// @Param        limit      query  int     false  "Messages per batch (default 50, max 100)"
+// @Success      200  {string}  string  "SSE stream — event:init | event:message | comment:heartbeat"
+// @Failure      401  {string}  string  "event:error"
+// @Failure      404  {string}  string  "event:error"
+// @Router       /client/{client_id}/chats/{guest_id} [get]
+func (cont *ChatContImpl) GetConversationDetail(ctx *gin.Context) {
+	accessToken := sseToken(ctx)
+
+	clientID, err := uuid.Parse(ctx.Param("client_id"))
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
+		return
+	}
+
+	guestID, err := uuid.Parse(ctx.Param("guest_id"))
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid guest_id"})
+		return
+	}
+
+	if _, err := helpers.DecodeJWT(accessToken, cont.JwtKey); err != nil {
+		ctx.AbortWithStatusJSON(401, gin.H{"error": "invalid token"})
+		return
+	}
+
+	var beforeID *uuid.UUID
+	if raw := ctx.Query("before_id"); raw != "" {
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid before_id"})
+			return
+		}
+		beforeID = &parsed
+	}
+
+	limit := 50
+	if raw := ctx.Query("limit"); raw != "" {
+		if n, e := strconv.Atoi(raw); e == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+
+	sseHeaders(ctx)
+
+	result, err := cont.ChatServ.GetConversationDetail(accessToken, clientID, guestID, beforeID, limit)
+	if err != nil {
+		writeSSE(ctx, "error", gin.H{"message": err.Error()})
+		return
+	}
+
+	if !writeSSE(ctx, "init", result) {
+		return
+	}
+
+	// Cursor/lazy-load request: just deliver the batch and close — no streaming needed.
+	if beforeID != nil {
+		return
+	}
+
+	// Initial load: stay connected and stream new messages for this guest.
+	h := helpers.GetChatHub()
+	tenantID := clientID.String()
+	ch := h.Subscribe(tenantID, guestID.String())
+	defer h.Unsubscribe(tenantID, guestID.String(), ch)
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	clientGone := ctx.Request.Context().Done()
+
+	for {
+		select {
+		case <-clientGone:
+			log.Printf("[ChatSSE:detail] client disconnected tenant=%s guest=%s", tenantID, guestID)
+			return
+		case <-ticker.C:
+			if _, err := fmt.Fprintf(ctx.Writer, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			ctx.Writer.Flush()
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := fmt.Fprintf(ctx.Writer, "event: message\ndata: %s\n\n", msg); err != nil {
+				return
+			}
+			ctx.Writer.Flush()
+		}
+	}
+}
+
+// MarkAsRead godoc
+// @Summary      Mark conversation as read
+// @Description  Sets is_read=true for the guest conversation
+// @Tags         Chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID (UUID)"
+// @Param        guest_id   path  string  true  "Guest ID (UUID)"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Failure      404  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/chats/{guest_id}/read [patch]
+func (cont *ChatContImpl) MarkAsRead(ctx *gin.Context) {
+	accessToken := helpers.GetJwtToken(ctx)
+
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
+		return
+	}
+
+	guestID, err := helpers.ParseUUID(ctx, "guest_id")
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid guest_id"})
+		return
+	}
+
+	if err := cont.ChatServ.MarkAsRead(accessToken, clientID, guestID); err != nil {
+		ctx.AbortWithStatusJSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, gin.H{"success": true, "message": "Marked as read"})
+}
+
 // SendManualReply godoc
-// @Summary      Send manual reply to guest
-// @Description  Send manual reply to a guest (for manual mode)
+// @Summary      Send manual reply
+// @Description  Send a message as the operator (is_human=true, role=assistant)
 // @Tags         Chat
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
-// @Param        client_id  path  string  true  "Client ID"
-// @Param        guest_id   path  string  true  "Guest ID"
-// @Param        request    body  object  true  "Request body with message field"
-// @Success      200        {object}  helpers.ApiResponse
-// @Failure      400        {object}  helpers.ApiResponse
-// @Failure      401        {object}  helpers.ApiResponse
-// @Failure      500        {object}  helpers.ApiResponse
+// @Param        client_id  path  string  true  "Client ID (UUID)"
+// @Param        guest_id   path  string  true  "Guest ID (UUID)"
+// @Param        body       body  object  true  "{ \"message\": \"...\" }"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
 // @Router       /client/{client_id}/chats/{guest_id}/messages [post]
 func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 	accessToken := helpers.GetJwtToken(ctx)
 
 	clientID, err := helpers.ParseUUID(ctx, "client_id")
 	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
 		return
 	}
 
 	guestID, err := helpers.ParseUUID(ctx, "guest_id")
 	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid guest_id"})
 		return
 	}
 
-	var request struct {
-		Message string `json:"message" validate:"required"`
+	var req struct {
+		Message string `json:"message"`
 	}
-
-	if err := helpers.ReadFromRequestBody(ctx, &request); err != nil {
-		exceptions.ErrorHandler(ctx, err)
+	if err := ctx.ShouldBindJSON(&req); err != nil || req.Message == "" {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "message is required"})
 		return
 	}
 
-	if request.Message == "" {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("message is required"))
+	if err := cont.ChatServ.SendManualReply(accessToken, clientID, guestID, req.Message); err != nil {
+		ctx.AbortWithStatusJSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	err = cont.ChatServ.SendManualReply(accessToken, clientID, guestID, request.Message)
-	if err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
-
-	response := helpers.ApiResponse{Success: true, Code: 200, Data: map[string]string{"message": "Message sent"}}
-	if err := helpers.WriteToResponseBody(ctx, response.Code, response); err != nil {
-		exceptions.ErrorHandler(ctx, err)
-		return
-	}
+	ctx.JSON(200, gin.H{"success": true, "message": "Message sent"})
 }
