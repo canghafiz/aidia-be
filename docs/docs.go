@@ -474,7 +474,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/client/{client_id}/chats": {
+        "/client/{client_id}/chats/{platform}": {
             "get": {
                 "description": "SSE stream. Sends event:init with full conversation list on connect, then event:update on any new activity.\nAuth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).",
                 "produces": [
@@ -489,6 +489,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Client ID (UUID)",
                         "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Platform (telegram|whatsapp)",
+                        "name": "platform",
                         "in": "path",
                         "required": true
                     },
@@ -527,7 +534,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/client/{client_id}/chats/{guest_id}": {
+        "/client/{client_id}/chats/{platform}/{guest_id}": {
             "get": {
                 "description": "SSE stream. On connect sends event:init with guest info + latest N messages (DESC, newest first).\nStays connected and streams event:message for new incoming messages.\n**Lazy load older messages**: reconnect with ?before_id=\u003coldest_message_id\u003e to get the previous batch.\nWhen before_id is set the connection closes after delivering the batch (no streaming needed).\nAuth: Bearer token in Authorization header, OR ?token= query param (for browser EventSource).",
                 "produces": [
@@ -542,6 +549,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Client ID (UUID)",
                         "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Platform (telegram|whatsapp)",
+                        "name": "platform",
                         "in": "path",
                         "required": true
                     },
@@ -593,7 +607,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/client/{client_id}/chats/{guest_id}/messages": {
+        "/client/{client_id}/chats/{platform}/{guest_id}/messages": {
             "post": {
                 "security": [
                     {
@@ -616,6 +630,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Client ID (UUID)",
                         "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Platform (telegram|whatsapp)",
+                        "name": "platform",
                         "in": "path",
                         "required": true
                     },
@@ -658,7 +679,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/client/{client_id}/chats/{guest_id}/read": {
+        "/client/{client_id}/chats/{platform}/{guest_id}/read": {
             "patch": {
                 "security": [
                     {
@@ -678,6 +699,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Client ID (UUID)",
                         "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Platform (telegram|whatsapp)",
+                        "name": "platform",
                         "in": "path",
                         "required": true
                     },
