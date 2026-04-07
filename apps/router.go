@@ -237,22 +237,23 @@ func NewRouter(r Router) *Router {
 		chatGroup := generalGroup.Group("client/:client_id/chats")
 		{
 			// OPTIONS preflight for browser EventSource / SSE
-			chatGroup.OPTIONS("", chatSSEOptions)
-			chatGroup.OPTIONS("/:guest_id", chatSSEOptions)
+			chatGroup.OPTIONS("/:platform", chatSSEOptions)
+			chatGroup.OPTIONS("/:platform/:guest_id", chatSSEOptions)
 
 			// SSE: list conversations (event:init + event:update on new activity)
-			chatGroup.GET("", r.Dependency.ChatCont.GetConversations)
+			// platform = telegram | whatsapp
+			chatGroup.GET("/:platform", r.Dependency.ChatCont.GetConversations)
 
 			// SSE: conversation detail (event:init + event:message for new messages)
 			// Lazy load older messages: reconnect with ?before_id=<id>
-			chatGroup.GET("/:guest_id", r.Dependency.ChatCont.GetConversationDetail)
+			chatGroup.GET("/:platform/:guest_id", r.Dependency.ChatCont.GetConversationDetail)
 
 			// Regular REST — Client role only
 			clientOnly := middlewares.ClientOnlyMiddleware(r.Dependency.JwtKey)
 			chatWithAuth := chatGroup.Use(middleware, clientOnly)
 			{
-				chatWithAuth.PATCH("/:guest_id/read", r.Dependency.ChatCont.MarkAsRead)
-				chatWithAuth.POST("/:guest_id/messages", r.Dependency.ChatCont.SendManualReply)
+				chatWithAuth.PATCH("/:platform/:guest_id/read", r.Dependency.ChatCont.MarkAsRead)
+				chatWithAuth.POST("/:platform/:guest_id/messages", r.Dependency.ChatCont.SendManualReply)
 			}
 		}
 

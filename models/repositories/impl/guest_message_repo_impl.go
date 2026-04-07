@@ -33,9 +33,13 @@ func (repo *GuestMessageRepoImpl) FindByGuestID(db *gorm.DB, schema string, gues
 
 // FindByGuestIDCursor loads messages older than beforeID (cursor-based lazy load).
 // If beforeID is nil, returns the most recent messages. Results are DESC (newest first).
-func (repo *GuestMessageRepoImpl) FindByGuestIDCursor(db *gorm.DB, schema string, guestID uuid.UUID, beforeID *uuid.UUID, limit int) ([]domains.GuestMessage, error) {
+// If platform is non-empty, only messages from that platform are returned.
+func (repo *GuestMessageRepoImpl) FindByGuestIDCursor(db *gorm.DB, schema string, guestID uuid.UUID, platform string, beforeID *uuid.UUID, limit int) ([]domains.GuestMessage, error) {
 	var messages []domains.GuestMessage
 	q := db.Table(schema+".guest_message").Where("guest_id = ?", guestID)
+	if platform != "" {
+		q = q.Where("platform = ?", platform)
+	}
 	if beforeID != nil {
 		// Fetch messages with created_at before the cursor message
 		q = q.Where("created_at < (SELECT created_at FROM "+schema+".guest_message WHERE id = ?)", beforeID)

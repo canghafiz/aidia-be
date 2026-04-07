@@ -7,8 +7,8 @@ import (
 )
 
 type ChatServ interface {
-	GetConversations(accessToken string, clientID uuid.UUID, pagination domains.Pagination) (interface{}, error)
-	GetConversationDetail(accessToken string, clientID, guestID uuid.UUID, beforeID *uuid.UUID, limit int) (interface{}, error)
+	GetConversations(accessToken string, clientID uuid.UUID, platform string, pagination domains.Pagination) (interface{}, error)
+	GetConversationDetail(accessToken string, clientID, guestID uuid.UUID, platform string, beforeID *uuid.UUID, limit int) (interface{}, error)
 	MarkAsRead(accessToken string, clientID, guestID uuid.UUID) error
-	SendManualReply(accessToken string, clientID, guestID uuid.UUID, message string) error
+	SendManualReply(accessToken string, clientID, guestID uuid.UUID, message, platform string) error
 }

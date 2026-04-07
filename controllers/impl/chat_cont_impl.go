@@ -76,12 +76,13 @@ func writeSSE(ctx *gin.Context, eventType string, data interface{}) bool {
 // @Tags         Chat
 // @Produce      text/event-stream
 // @Param        client_id  path   string  true   "Client ID (UUID)"
+// @Param        platform   path   string  true   "Platform (telegram|whatsapp)"
 // @Param        token      query  string  false  "JWT token (use when EventSource cannot set Authorization header)"
 // @Param        page       query  int     false  "Page (default 1)"
 // @Param        limit      query  int     false  "Conversations per page (default 50)"
 // @Success      200  {string}  string  "SSE stream — event:init | event:update | comment:heartbeat"
 // @Failure      401  {string}  string  "event:error"
-// @Router       /client/{client_id}/chats [get]
+// @Router       /client/{client_id}/chats/{platform} [get]
 func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
 	accessToken := sseToken(ctx)
 
@@ -90,6 +91,8 @@ func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
 		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
 		return
 	}
+
+	platform := ctx.Param("platform")
 
 	if _, err := helpers.DecodeJWT(accessToken, cont.JwtKey); err != nil {
 		ctx.AbortWithStatusJSON(401, gin.H{"error": "invalid token"})
@@ -110,7 +113,7 @@ func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
 
 	sseHeaders(ctx)
 
-	result, err := cont.ChatServ.GetConversations(accessToken, clientID, domains.Pagination{Page: page, Limit: limit})
+	result, err := cont.ChatServ.GetConversations(accessToken, clientID, platform, domains.Pagination{Page: page, Limit: limit})
 	if err != nil {
 		writeSSE(ctx, "error", gin.H{"message": err.Error()})
 		return
@@ -162,6 +165,7 @@ func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
 // @Tags         Chat
 // @Produce      text/event-stream
 // @Param        client_id  path   string  true   "Client ID (UUID)"
+// @Param        platform   path   string  true   "Platform (telegram|whatsapp)"
 // @Param        guest_id   path   string  true   "Guest ID (UUID)"
 // @Param        token      query  string  false  "JWT token (for browser EventSource)"
 // @Param        before_id  query  string  false  "Cursor: fetch messages older than this message ID (lazy load)"
@@ -169,7 +173,7 @@ func (cont *ChatContImpl) GetConversations(ctx *gin.Context) {
 // @Success      200  {string}  string  "SSE stream — event:init | event:message | comment:heartbeat"
 // @Failure      401  {string}  string  "event:error"
 // @Failure      404  {string}  string  "event:error"
-// @Router       /client/{client_id}/chats/{guest_id} [get]
+// @Router       /client/{client_id}/chats/{platform}/{guest_id} [get]
 func (cont *ChatContImpl) GetConversationDetail(ctx *gin.Context) {
 	accessToken := sseToken(ctx)
 
@@ -178,6 +182,8 @@ func (cont *ChatContImpl) GetConversationDetail(ctx *gin.Context) {
 		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
 		return
 	}
+
+	platform := ctx.Param("platform")
 
 	guestID, err := uuid.Parse(ctx.Param("guest_id"))
 	if err != nil {
@@ -209,7 +215,7 @@ func (cont *ChatContImpl) GetConversationDetail(ctx *gin.Context) {
 
 	sseHeaders(ctx)
 
-	result, err := cont.ChatServ.GetConversationDetail(accessToken, clientID, guestID, beforeID, limit)
+	result, err := cont.ChatServ.GetConversationDetail(accessToken, clientID, guestID, platform, beforeID, limit)
 	if err != nil {
 		writeSSE(ctx, "error", gin.H{"message": err.Error()})
 		return
@@ -263,11 +269,12 @@ func (cont *ChatContImpl) GetConversationDetail(ctx *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id  path  string  true  "Client ID (UUID)"
+// @Param        platform   path  string  true  "Platform (telegram|whatsapp)"
 // @Param        guest_id   path  string  true  "Guest ID (UUID)"
 // @Success      200  {object}  helpers.ApiResponse
 // @Failure      401  {object}  helpers.ApiResponse
 // @Failure      404  {object}  helpers.ApiResponse
-// @Router       /client/{client_id}/chats/{guest_id}/read [patch]
+// @Router       /client/{client_id}/chats/{platform}/{guest_id}/read [patch]
 func (cont *ChatContImpl) MarkAsRead(ctx *gin.Context) {
 	accessToken := helpers.GetJwtToken(ctx)
 
@@ -299,12 +306,13 @@ func (cont *ChatContImpl) MarkAsRead(ctx *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id  path  string  true  "Client ID (UUID)"
+// @Param        platform   path  string  true  "Platform (telegram|whatsapp)"
 // @Param        guest_id   path  string  true  "Guest ID (UUID)"
 // @Param        body       body  chatreq.SendMessageRequest  true  "Request body"
 // @Success      200  {object}  helpers.ApiResponse
 // @Failure      400  {object}  helpers.ApiResponse
 // @Failure      401  {object}  helpers.ApiResponse
-// @Router       /client/{client_id}/chats/{guest_id}/messages [post]
+// @Router       /client/{client_id}/chats/{platform}/{guest_id}/messages [post]
 func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 	accessToken := helpers.GetJwtToken(ctx)
 
@@ -313,6 +321,8 @@ func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
 		return
 	}
+
+	platform := ctx.Param("platform")
 
 	guestID, err := helpers.ParseUUID(ctx, "guest_id")
 	if err != nil {
@@ -326,7 +336,11 @@ func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 		return
 	}
 
-	if err := cont.ChatServ.SendManualReply(accessToken, clientID, guestID, req.Message); err != nil {
+	if err := cont.ChatServ.SendManualReply(accessToken, clientID, guestID, req.Message, platform); err != nil {
+		if err.Error() == "whatsapp_coming_soon" {
+			ctx.AbortWithStatusJSON(400, gin.H{"error": "WhatsApp integration coming soon. Stay tuned!"})
+			return
+		}
 		ctx.AbortWithStatusJSON(500, gin.H{"error": err.Error()})
 		return
 	}

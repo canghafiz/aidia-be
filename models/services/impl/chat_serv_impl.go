@@ -64,13 +64,13 @@ func (serv *ChatServImpl) resolveTenant(accessToken string, clientID uuid.UUID) 
 	return *user.TenantSchema, user.Tenant.TenantID, nil
 }
 
-func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUID, pagination domains.Pagination) (interface{}, error) {
+func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUID, platform string, pagination domains.Pagination) (interface{}, error) {
 	schema, tenantID, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
 		return nil, err
 	}
 
-	guests, total, err := serv.GuestRepo.FindAllByTenantID(serv.Db, schema, tenantID, pagination)
+	guests, total, err := serv.GuestRepo.FindAllByTenantID(serv.Db, schema, tenantID, platform, pagination)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUI
 
 	items := make([]ConversationItem, 0, len(guests))
 	for _, g := range guests {
-		msgs, _ := serv.GuestMessageRepo.FindByGuestIDCursor(serv.Db, schema, g.ID, nil, 1)
+		msgs, _ := serv.GuestMessageRepo.FindByGuestIDCursor(serv.Db, schema, g.ID, platform, nil, 1)
 		lastMsg := ""
 		if len(msgs) > 0 {
 			lastMsg = msgs[0].Message
@@ -122,7 +122,7 @@ func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUI
 	}, nil
 }
 
-func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, guestID uuid.UUID, beforeID *uuid.UUID, limit int) (interface{}, error) {
+func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, guestID uuid.UUID, platform string, beforeID *uuid.UUID, limit int) (interface{}, error) {
 	schema, _, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, gu
 		limit = 50
 	}
 
-	messages, err := serv.GuestMessageRepo.FindByGuestIDCursor(serv.Db, schema, guestID, beforeID, limit)
+	messages, err := serv.GuestMessageRepo.FindByGuestIDCursor(serv.Db, schema, guestID, platform, beforeID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +208,11 @@ func (serv *ChatServImpl) MarkAsRead(accessToken string, clientID, guestID uuid.
 	return serv.GuestRepo.MarkAsRead(serv.Db, schema, guestID)
 }
 
-func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID uuid.UUID, message string) error {
+func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID uuid.UUID, message, platform string) error {
+	if platform == "whatsapp" {
+		return fmt.Errorf("whatsapp_coming_soon")
+	}
+
 	schema, _, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
 		return err
@@ -226,6 +230,7 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 		Message:  message,
 		IsHuman:  true,
 		IsActive: true,
+		Platform: platform,
 	}
 
 	if err := serv.GuestMessageRepo.Create(serv.Db, schema, newMsg); err != nil {
@@ -238,7 +243,7 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 	serv.GuestRepo.Update(serv.Db, schema, *guest)
 
 	// Send to Telegram so the guest actually receives the reply
-	if guest.PlatformChatID != "" {
+	if platform == "telegram" && guest.PlatformChatID != "" {
 		settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "Telegram")
 		if err == nil {
 			botToken := ""

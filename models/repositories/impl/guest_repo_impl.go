@@ -38,15 +38,24 @@ func (repo *GuestRepoImpl) FindByPlatformChatID(db *gorm.DB, schema, chatID stri
 	return &guest, nil
 }
 
-func (repo *GuestRepoImpl) FindAllByTenantID(db *gorm.DB, schema string, tenantID uuid.UUID, pagination domains.Pagination) ([]domains.Guest, int64, error) {
+func (repo *GuestRepoImpl) FindAllByTenantID(db *gorm.DB, schema string, tenantID uuid.UUID, platform string, pagination domains.Pagination) ([]domains.Guest, int64, error) {
 	var guests []domains.Guest
 	var total int64
 
 	table := schema + ".guest"
-	db.Table(table).Where("tenant_id = ?", tenantID).Count(&total)
+	msgTable := schema + ".guest_message"
 
-	err := db.Table(table).
-		Where("tenant_id = ?", tenantID).
+	baseQ := func() *gorm.DB {
+		q := db.Table(table).Where("tenant_id = ?", tenantID)
+		if platform != "" {
+			q = q.Where("id IN (SELECT DISTINCT guest_id FROM "+msgTable+" WHERE platform = ?)", platform)
+		}
+		return q
+	}
+
+	baseQ().Count(&total)
+
+	err := baseQ().
 		Order("last_message_at DESC NULLS LAST").
 		Limit(pagination.Limit).
 		Offset(pagination.Offset()).
