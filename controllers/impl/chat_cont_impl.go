@@ -4,6 +4,7 @@ import (
 	"backend/helpers"
 	"backend/models/domains"
 	"backend/models/repositories"
+	chatreq "backend/models/requests/chat"
 	"backend/models/services"
 	"encoding/json"
 	"fmt"
@@ -299,7 +300,7 @@ func (cont *ChatContImpl) MarkAsRead(ctx *gin.Context) {
 // @Security     BearerAuth
 // @Param        client_id  path  string  true  "Client ID (UUID)"
 // @Param        guest_id   path  string  true  "Guest ID (UUID)"
-// @Param        body       body  object  true  "{ \"message\": \"...\" }"
+// @Param        body       body  chatreq.SendMessageRequest  true  "Request body"
 // @Success      200  {object}  helpers.ApiResponse
 // @Failure      400  {object}  helpers.ApiResponse
 // @Failure      401  {object}  helpers.ApiResponse
@@ -319,9 +320,7 @@ func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 		return
 	}
 
-	var req struct {
-		Message string `json:"message"`
-	}
+	var req chatreq.SendMessageRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil || req.Message == "" {
 		ctx.AbortWithStatusJSON(400, gin.H{"error": "message is required"})
 		return

@@ -1,5 +1,13 @@
 basePath: /api/v1
 definitions:
+  chat.SendMessageRequest:
+    properties:
+      message:
+        example: Halo, ada yang bisa kami bantu?
+        type: string
+    required:
+    - message
+    type: object
   customer.CreateCustomerRequest:
     properties:
       account_type:
@@ -1550,12 +1558,12 @@ paths:
         name: guest_id
         required: true
         type: string
-      - description: '{ \'
+      - description: Request body
         in: body
         name: body
         required: true
         schema:
-          type: object
+          $ref: '#/definitions/chat.SendMessageRequest'
       produces:
       - application/json
       responses:

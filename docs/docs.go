@@ -627,12 +627,12 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "{ \\",
+                        "description": "Request body",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "type": "object"
+                            "$ref": "#/definitions/chat.SendMessageRequest"
                         }
                     }
                 ],
@@ -4899,6 +4899,18 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "chat.SendMessageRequest": {
+            "type": "object",
+            "required": [
+                "message"
+            ],
+            "properties": {
+                "message": {
+                    "type": "string",
+                    "example": "Halo, ada yang bisa kami bantu?"
+                }
+            }
+        },
         "customer.CreateCustomerRequest": {
             "type": "object",
             "required": [
