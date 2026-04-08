@@ -17,6 +17,11 @@ services:
       - "traefik.http.routers.ai-dia.entrypoints=https"
       - "traefik.http.routers.ai-dia.tls.certresolver=letsencrypt"
       - "traefik.http.services.ai-dia.loadbalancer.server.port=8005"
+      - "traefik.http.middlewares.ai-dia-cors.headers.accesscontrolallowmethods=GET,POST,PUT,DELETE,PATCH,OPTIONS"
+      - "traefik.http.middlewares.ai-dia-cors.headers.accesscontrolallowheaders=Origin,Content-Type,Authorization,Accept,X-Requested-With"
+      - "traefik.http.middlewares.ai-dia-cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.ai-dia-cors.headers.accesscontrolmaxage=86400"
+      - "traefik.http.routers.ai-dia.middlewares=ai-dia-cors"
 
 networks:
   coolify:
