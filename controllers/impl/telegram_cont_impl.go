@@ -445,7 +445,7 @@ func parseCheckOrderIntent(text string) (bool, int) {
 
 	// Must contain order-related noun
 	orderNouns := []string{
-		"order", "pesanan", "pemesanan", "belanjaan", "transaksi",
+		"order", "pesanan", "pemesanan", "belanjaan", "transaksi", "belanja",
 	}
 	hasOrderWord := false
 	for _, w := range orderNouns {
@@ -460,10 +460,18 @@ func parseCheckOrderIntent(text string) (bool, int) {
 
 	// Must also have a qualifying word showing intent to check/view
 	qualifiers := []string{
+		// English
 		"check", "status", "my", "see", "view", "track", "history",
-		"cek", "lihat", "gimana", "mana", "sampai", "nyampe",
-		"dimana", "progress", "update", "recent", "latest", "last",
-		"udah", "sudah", "belum", "selesai", "done", "#",
+		"update", "recent", "latest", "last", "where", "when",
+		"what happened", "what's the", "how's my", "how is my",
+		"arrived", "delivered", "received", "done", "completed",
+		// Indonesian
+		"cek", "lihat", "gimana", "gimana nih", "mana", "mana nih",
+		"sampai", "nyampe", "nyampai", "tiba",
+		"dimana", "di mana", "kemana", "sampai mana",
+		"progress", "udah", "udah sampai", "sudah", "sudah sampai",
+		"belum", "selesai", "selesai belum", "sampai belum",
+		"konfirmasi", "info", "#",
 	}
 	hasQualifier := false
 	for _, q := range qualifiers {
@@ -509,13 +517,27 @@ func isCreateOrderIntent(text string) bool {
 
 	// Strong single phrases — langsung true
 	strongPhrases := []string{
-		"place order", "make order", "create order", "mau order", "mau pesan",
-		"mau beli", "mau beli", "buat pesanan", "pesan sekarang", "order sekarang",
+		// English
+		"place order", "make order", "create order",
 		"i want to order", "i wanna order", "i'd like to order",
-		"i want to buy", "i wanna buy", "pengen order", "pengen pesan", "pengen beli",
-		"ingin order", "ingin pesan", "ingin beli", "want to purchase",
-		"order dong", "pesan dong", "beli dong", "order ya", "pesan ya",
+		"i want to buy", "i wanna buy", "i'd like to buy",
+		"i'll have", "i'll take", "i'll get",
+		"can i order", "can i buy", "can i get",
+		"let me order", "let me buy", "let me get",
+		"want to purchase", "wanna purchase",
+		"gimme", "give me",
+		// Indonesian
+		"mau order", "mau pesan", "mau pesen", "mau beli",
+		"buat pesanan", "pesan sekarang", "order sekarang",
+		"pengen order", "pengen pesan", "pengen pesen", "pengen beli",
+		"ingin order", "ingin pesan", "ingin beli",
+		"aku mau order", "aku mau pesan", "aku mau beli",
+		"saya mau order", "saya mau pesan", "saya mau beli",
+		"order dong", "pesan dong", "pesen dong", "beli dong",
+		"order ya", "pesan ya", "pesen ya", "beli ya",
 		"bisa order", "bisa pesan", "bisa beli",
+		"boleh order", "boleh pesan", "boleh beli",
+		"mau pesen", "mau ambil",
 	}
 	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
@@ -525,7 +547,7 @@ func isCreateOrderIntent(text string) bool {
 
 	// Word-group: action verb + order noun
 	actionVerbs := []string{
-		"order", "pesan", "beli", "purchase", "buy", "checkout",
+		"order", "pesan", "pesen", "beli", "purchase", "buy", "checkout",
 	}
 	orderNouns := []string{
 		"makanan", "minuman", "produk", "item", "barang", "food", "drink",
@@ -548,15 +570,40 @@ func isShowProductsIntent(text string) bool {
 
 	// Strong single phrases — langsung true
 	strongPhrases := []string{
-		"see product", "show product", "view product", "lihat produk",
-		"see menu", "show menu", "view menu", "lihat menu",
+		// English
+		"see product", "show product", "view product", "list product",
+		"see menu", "show menu", "view menu", "list menu",
 		"what do you have", "what do you sell", "what do you offer",
 		"what's on the menu", "what is on the menu",
+		"what's available", "what is available",
+		"what products do you have", "what food do you have",
+		"what items do you have", "what items do you sell",
+		"show me your menu", "show me your product",
+		"can i see your menu", "can i see your product",
+		"let me see the menu", "let me see your product",
+		"i want to see your menu", "i want to see your product",
+		"i wanna see your menu", "i wanna see your product",
+		"i'd like to see your menu", "i'd like to see the menu",
+		"do you have any food", "do you have any menu",
+		"got any food", "got any menu", "any food available",
+		"your product", "your menu", "your food list",
+		"tell me your menu", "tell me your product",
+		// Indonesian
+		"lihat produk", "lihat menu", "lihat makanan", "lihat minuman",
+		"liat produk", "liat menu", "liat makanan",
 		"apa saja produk", "apa aja produk", "apa produk",
 		"ada menu apa", "ada produk apa", "ada apa aja", "ada apa saja",
+		"ada makanan apa", "ada minuman apa", "jual apa", "jual apa aja", "jual apa saja",
+		"ada apa", "apa yang dijual", "apa yang ada",
 		"daftar produk", "daftar menu", "tampilkan produk", "tampilkan menu",
 		"kasih lihat produk", "kasih lihat menu",
-		"your product", "your menu",
+		"tunjukkan produk", "tunjukkan menu", "tunjukin produk", "tunjukin menu",
+		"tunjukin aja", "tunjukkan aja",
+		"info produk", "info menu", "informasi produk", "informasi menu",
+		"mau lihat produk", "mau lihat menu", "mau liat produk", "mau liat menu",
+		"boleh lihat produk", "boleh lihat menu", "boleh liat produk", "boleh liat menu",
+		"pengen lihat menu", "pengen liat menu", "pengen lihat produk",
+		"katalog produk", "katalog menu",
 	}
 	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
@@ -567,7 +614,10 @@ func isShowProductsIntent(text string) bool {
 	// Word-group: view verb + product noun
 	viewVerbs := []string{
 		"see", "show", "view", "display", "browse", "check out",
-		"lihat", "liat", "tampilkan", "kasih", "cek",
+		"list", "find",
+		"lihat", "liat", "tampilkan", "tunjuk", "perlihat",
+		"kasih tau", "kasih tahu", "kasih liat", "kasih lihat",
+		"cek", "mau tau", "mau tahu", "pengen tau", "pengen tahu",
 	}
 	productNouns := []string{
 		"product", "produk", "menu", "makanan", "minuman", "item",
