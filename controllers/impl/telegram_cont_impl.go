@@ -392,6 +392,9 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 		} else if strings.EqualFold(text, "menu") {
 			// Show main menu
 			cont.showMenu(tgClient, chatID, schema, guest, user.UserID)
+		} else if isShowProductsIntent(text) {
+			cont.showProducts(tgClient, chatID, schema, guest, user.UserID)
+			cont.setGuestState(schema, guest, "browsing_products")
 		} else if ok, oid := parseCheckOrderIntent(text); ok {
 			cont.showOrderStatus(tgClient, chatID, guest.Phone, schema, oid, user.UserID)
 		} else if isCreateOrderIntent(text) {
@@ -492,6 +495,23 @@ func isCheckOrderIntent(text string) bool {
 func isCreateOrderIntent(text string) bool {
 	lower := strings.ToLower(text)
 	keywords := []string{"i want to order", "i wanna order", "place order", "make order", "create order", "mau order", "mau pesan", "buat pesanan", "pesan sekarang"}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// isShowProductsIntent detects intent to view products from free-form text
+func isShowProductsIntent(text string) bool {
+	lower := strings.ToLower(text)
+	keywords := []string{
+		"see product", "show product", "view product", "lihat produk", "lihat menu",
+		"see menu", "show menu", "view menu", "what do you have", "what do you sell",
+		"apa saja produk", "ada apa", "ada menu", "daftar produk", "daftar menu",
+		"your product", "your menu", "see your", "show your",
+	}
 	for _, kw := range keywords {
 		if strings.Contains(lower, kw) {
 			return true
