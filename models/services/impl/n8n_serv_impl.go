@@ -50,11 +50,19 @@ func NewN8NServImpl(webhookURL string) *N8NServImpl {
 }
 
 func NewTelegramN8NServImpl() *N8NServImpl {
-	return NewN8NServImpl(os.Getenv("N8N_TELEGRAM_WEBHOOK_URL"))
+	url := os.Getenv("N8N_TELEGRAM_WEBHOOK_URL")
+	if url == "" {
+		url = os.Getenv("N8N_WEBHOOK_URL") // backward compat
+	}
+	return NewN8NServImpl(url)
 }
 
 func NewWhatsAppN8NServImpl() *N8NServImpl {
-	return NewN8NServImpl(os.Getenv("N8N_WHATSAPP_WEBHOOK_URL"))
+	url := os.Getenv("N8N_WHATSAPP_WEBHOOK_URL")
+	if url == "" {
+		url = os.Getenv("N8N_WEBHOOK_URL") // backward compat
+	}
+	return NewN8NServImpl(url)
 }
 
 // ProcessMessage forwards message to n8n for AI processing

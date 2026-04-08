@@ -491,6 +491,94 @@ User: "kasih 3 yang pertama" → [{"product_id":"<uuid-first-product>","quantity
 	return parsed, nil
 }
 
+// detectIntentWithAI uses OpenAI to understand the meaning of the user's message
+// and classify it into one of: "SHOW_PRODUCTS", "CREATE_ORDER", "CHECK_ORDER", "OTHER".
+// Works in any language and any phrasing — OpenAI understands the semantic intent.
+// For CHECK_ORDER, also returns orderID: -1=most recent, 0=all, >0=specific order ID.
+func detectIntentWithAI(text string) (string, int) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return "OTHER", 0
+	}
+
+	systemPrompt := `You are an intent classifier for a restaurant ordering chatbot.
+Understand the MEANING of the user's message in ANY language or phrasing, then classify it into exactly one intent:
+
+SHOW_PRODUCTS - user wants to see, browse, view, or ask about the menu, products, food, or drinks available
+CREATE_ORDER - user wants to place, make, or create a new order; or directly states what they want to buy/order
+CHECK_ORDER - user wants to check, view, track, or ask about the status of their existing order(s)
+OTHER - anything else (greetings, complaints, store questions, etc.)
+
+For CHECK_ORDER responses:
+- Specific order number mentioned → CHECK_ORDER:NUMBER  (e.g. CHECK_ORDER:5)
+- Asking about all orders → CHECK_ORDER:ALL
+- Default (recent/latest) → CHECK_ORDER:RECENT
+
+Respond with ONLY the intent string. No explanation, no extra text.`
+
+	reqBody := map[string]interface{}{
+		"model": "gpt-4o-mini",
+		"messages": []map[string]string{
+			{"role": "system", "content": systemPrompt},
+			{"role": "user", "content": text},
+		},
+		"max_tokens":  15,
+		"temperature": 0,
+	}
+
+	jsonData, _ := json.Marshal(reqBody)
+	req, err := http.NewRequest("POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "OTHER", 0
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "OTHER", 0
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Choices) == 0 {
+		return "OTHER", 0
+	}
+
+	content := strings.TrimSpace(result.Choices[0].Message.Content)
+	log.Printf("[Intent/AI] '%s' → %s", text, content)
+
+	if strings.HasPrefix(content, "CHECK_ORDER") {
+		parts := strings.SplitN(content, ":", 2)
+		if len(parts) == 2 {
+			suffix := strings.TrimSpace(parts[1])
+			if suffix == "ALL" {
+				return "CHECK_ORDER", 0
+			}
+			if id, err := strconv.Atoi(suffix); err == nil && id > 0 {
+				return "CHECK_ORDER", id
+			}
+		}
+		return "CHECK_ORDER", -1
+	}
+
+	switch content {
+	case "SHOW_PRODUCTS":
+		return "SHOW_PRODUCTS", 0
+	case "CREATE_ORDER":
+		return "CREATE_ORDER", 0
+	default:
+		return "OTHER", 0
+	}
+}
+
 // parseProductsFallback is a last-resort parser used when OpenAI is unavailable.
 // It matches product names in the text and extracts preceding digits as quantity.
 func parseProductsFallback(input string, products []domains.Product) []ParsedProduct {

@@ -52,6 +52,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/v1/subs/token-usage": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the current AI token usage for the authenticated tenant.\n\n**Free Plan:**\n- ` + "`" + `plan_type` + "`" + ` = \"free\"\n- ` + "`" + `is_unlimited` + "`" + ` = false\n- ` + "`" + `token_limit` + "`" + ` = 1,000,000\n- ` + "`" + `tokens_used` + "`" + ` = total tokens consumed so far\n- ` + "`" + `tokens_remaining` + "`" + ` = tokens left before the bot is blocked\n- ` + "`" + `percentage_used` + "`" + ` = percentage of quota used (0–100)\n- ` + "`" + `message` + "`" + ` shows a warning when usage ≥ 80%, and an upgrade prompt when limit is reached\n\n**Paid Plan:**\n- ` + "`" + `plan_type` + "`" + ` = \"paid\"\n- ` + "`" + `is_unlimited` + "`" + ` = true\n- All numeric fields return -1 (unlimited)\n\n**Error Responses:**\n- 401 — Token missing, expired, or invalid\n- 403 — Authenticated user is not a Client\n- 404 — Tenant record not found\n- 500 — Failed to retrieve subscription or usage data",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Subscription"
+                ],
+                "summary": "Get AI Token Usage",
+                "responses": {
+                    "200": {
+                        "description": "Token usage data",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/subs.TokenUsageResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized — invalid or missing token",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden — user is not a Client",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Tenant not found",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/webhook/telegram/{schema}": {
             "post": {
                 "description": "Receive incoming Telegram messages",
@@ -6302,6 +6363,39 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "used_tokens": {
+                    "type": "integer"
+                }
+            }
+        },
+        "subs.TokenUsageResponse": {
+            "type": "object",
+            "properties": {
+                "is_unlimited": {
+                    "description": "true if paid plan active",
+                    "type": "boolean"
+                },
+                "message": {
+                    "description": "human-readable summary",
+                    "type": "string"
+                },
+                "percentage_used": {
+                    "description": "0-100, -1 if unlimited",
+                    "type": "number"
+                },
+                "plan_type": {
+                    "description": "\"free\" | \"paid\"",
+                    "type": "string"
+                },
+                "token_limit": {
+                    "description": "1_000_000 for free, -1 for unlimited",
+                    "type": "integer"
+                },
+                "tokens_remaining": {
+                    "description": "-1 if unlimited",
+                    "type": "integer"
+                },
+                "tokens_used": {
+                    "description": "total tokens consumed",
                     "type": "integer"
                 }
             }

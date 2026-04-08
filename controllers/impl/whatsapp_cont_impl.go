@@ -28,6 +28,7 @@ type WhatsAppContImpl struct {
 	OrderRepo              repositories.OrderRepo
 	OrderPaymentRepo       repositories.OrderPaymentRepo
 	CustomerRepo           repositories.CustomerRepo
+	TenantUsageRepo        repositories.TenantUsageRepo
 	N8NServ                services.N8NServ
 	WhatsAppConnectionRepo repositories.WhatsAppConnectionRepo
 	Db                     *gorm.DB
@@ -42,6 +43,7 @@ func NewWhatsAppContImpl(
 	orderRepo repositories.OrderRepo,
 	orderPaymentRepo repositories.OrderPaymentRepo,
 	customerRepo repositories.CustomerRepo,
+	tenantUsageRepo repositories.TenantUsageRepo,
 	n8nServ services.N8NServ,
 	whatsAppConnectionRepo repositories.WhatsAppConnectionRepo,
 	db *gorm.DB,
@@ -55,6 +57,7 @@ func NewWhatsAppContImpl(
 		OrderRepo:              orderRepo,
 		OrderPaymentRepo:       orderPaymentRepo,
 		CustomerRepo:           customerRepo,
+		TenantUsageRepo:        tenantUsageRepo,
 		N8NServ:                n8nServ,
 		WhatsAppConnectionRepo: whatsAppConnectionRepo,
 		Db:                     db,
@@ -336,7 +339,7 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 
 		case "4":
 			cont.setGuestState(schema, guest, "asking_faq")
-			cont.waHandleAIMessage(waClient, chatID, guest, "Hi, I'd like to know the FAQ for this store.", schema, user.UserID)
+			cont.waHandleAIMessage(waClient, chatID, guest, "Hi, I'd like to know the FAQ for this store.", schema, user.UserID, tenantID)
 
 		default:
 			if strings.EqualFold(text, "menu") {
@@ -352,7 +355,7 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 					cont.waStartCreateOrder(waClient, chatID, schema, guest)
 				}
 			} else {
-				cont.waHandleAIMessage(waClient, chatID, guest, text, schema, user.UserID)
+				cont.waHandleAIMessage(waClient, chatID, guest, text, schema, user.UserID, tenantID)
 			}
 		}
 	}
@@ -610,8 +613,18 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient *helpers.WhatsAp
 }
 
 // waHandleAIMessage forwards message to n8n for AI processing
-func (cont *WhatsAppContImpl) waHandleAIMessage(waClient *helpers.WhatsAppClient, chatID string, guest *domains.Guest, message, schema string, clientID uuid.UUID) {
+// tenantID is used for token usage tracking.
+func (cont *WhatsAppContImpl) waHandleAIMessage(waClient *helpers.WhatsAppClient, chatID string, guest *domains.Guest, message, schema string, clientID, tenantID uuid.UUID) {
 	log.Printf("[WhatsApp/AI] handling message for guest %s: %s", guest.ID, message)
+
+	// Check free token limit when no active subscription
+	if !hasActiveSubs(cont.Db, cont.TenantUsageRepo, tenantID) {
+		if freeTokensRemaining(cont.Db, cont.TenantUsageRepo, tenantID) <= 0 {
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"⚠️ This store has reached its free AI message limit.\n\nTo continue using the AI assistant, the store owner needs to upgrade to a paid subscription.\n\nFor assistance, please contact the store directly.")
+			return
+		}
+	}
 
 	guestID := guest.ID
 	guestName := guest.Name
@@ -624,6 +637,12 @@ func (cont *WhatsAppContImpl) waHandleAIMessage(waClient *helpers.WhatsAppClient
 			log.Printf("[WhatsApp/AI] n8n error: %v", err)
 			waClient.SendMessage(chatID, "⚠️ Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.")
 			return
+		}
+
+		// Deduct tokens from free usage if no active subscription
+		if !hasActiveSubs(cont.Db, cont.TenantUsageRepo, tenantID) && n8nResp.UsageTokens > 0 {
+			deductFreeTokens(cont.Db, cont.TenantUsageRepo, tenantID, n8nResp.UsageTokens)
+			log.Printf("[Token] deducted %d tokens for tenant %s", n8nResp.UsageTokens, tenantID)
 		}
 
 		if strings.Contains(n8nResp.Reply, "__ACTION:CREATE_ORDER__") {

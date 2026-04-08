@@ -16,6 +16,17 @@ type TokenUsage struct {
 	TotalCost   float64 `json:"total_cost"`
 }
 
+// TokenUsageResponse is the dedicated response for the token-usage endpoint.
+type TokenUsageResponse struct {
+	PlanType         string  `json:"plan_type"`          // "free" | "paid"
+	IsUnlimited      bool    `json:"is_unlimited"`       // true if paid plan active
+	TokenLimit       int64   `json:"token_limit"`        // 1_000_000 for free, -1 for unlimited
+	TokensUsed       int64   `json:"tokens_used"`        // total tokens consumed
+	TokensRemaining  int64   `json:"tokens_remaining"`   // -1 if unlimited
+	PercentageUsed   float64 `json:"percentage_used"`    // 0-100, -1 if unlimited
+	Message          string  `json:"message"`            // human-readable summary
+}
+
 // ============================================================
 // PLAN INFO
 // ============================================================

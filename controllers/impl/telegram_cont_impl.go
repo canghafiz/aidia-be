@@ -28,6 +28,7 @@ type TelegramContImpl struct {
 	OrderRepo        repositories.OrderRepo
 	OrderPaymentRepo repositories.OrderPaymentRepo
 	CustomerRepo     repositories.CustomerRepo
+	TenantUsageRepo  repositories.TenantUsageRepo
 	N8NServ          services.N8NServ
 	Db               *gorm.DB
 }
@@ -41,6 +42,7 @@ func NewTelegramContImpl(
 	orderRepo repositories.OrderRepo,
 	orderPaymentRepo repositories.OrderPaymentRepo,
 	customerRepo repositories.CustomerRepo,
+	tenantUsageRepo repositories.TenantUsageRepo,
 	n8nServ services.N8NServ,
 	db *gorm.DB,
 ) *TelegramContImpl {
@@ -53,6 +55,7 @@ func NewTelegramContImpl(
 		OrderRepo:        orderRepo,
 		OrderPaymentRepo: orderPaymentRepo,
 		CustomerRepo:     customerRepo,
+		TenantUsageRepo:  tenantUsageRepo,
 		N8NServ:          n8nServ,
 		Db:               db,
 	}
@@ -388,29 +391,31 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			guest.ConversationState["state"] = "asking_faq"
 			cont.GuestRepo.Update(cont.Db, schema, *guest)
 
-			cont.handleAIMessage(tgClient, chatID, guest, "Hi, I'd like to know the FAQ for this store.", schema, user.UserID)
+			cont.handleAIMessage(tgClient, chatID, guest, "Hi, I'd like to know the FAQ for this store.", schema, user.UserID, tenantID)
 		} else if strings.EqualFold(text, "menu") {
 			// Show main menu
 			cont.showMenu(tgClient, chatID, schema, guest, user.UserID)
-		} else if isShowProductsIntent(text) {
-			cont.showProducts(tgClient, chatID, schema, guest, user.UserID)
-			cont.setGuestState(schema, guest, "browsing_products")
-		} else if ok, oid := parseCheckOrderIntent(text); ok {
-			cont.showOrderStatus(tgClient, chatID, guest.Phone, schema, oid, user.UserID)
-		} else if isCreateOrderIntent(text) {
-			if !cont.isOperationalHoursOpen(schema) {
-				cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "⏰ Sorry, we are currently outside our operational hours. Please try again during business hours.")
-			} else {
-				if guest.ConversationState == nil {
-					guest.ConversationState = domains.JSONB{}
-				}
-				guest.ConversationState["state"] = "creating_order"
-				cont.GuestRepo.Update(cont.Db, schema, *guest)
-				cont.startCreateOrder(tgClient, chatID, schema, guest)
-			}
 		} else {
-			// Free-form text → AI responds with combined prompt from all sections
-			cont.handleAIMessage(tgClient, chatID, guest, text, schema, user.UserID)
+			// Use AI to understand the meaning — any language, any phrasing
+			intent, orderID := detectIntentWithAI(text)
+			switch intent {
+			case "SHOW_PRODUCTS":
+				cont.showProducts(tgClient, chatID, schema, guest, user.UserID)
+				cont.setGuestState(schema, guest, "browsing_products")
+			case "CREATE_ORDER":
+				if !cont.isOperationalHoursOpen(schema) {
+					cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "⏰ Sorry, we are currently outside our operational hours. Please try again during business hours.")
+				} else {
+					cont.setGuestState(schema, guest, "creating_order")
+					cont.startCreateOrder(tgClient, chatID, schema, guest)
+				}
+			case "CHECK_ORDER":
+				cont.showOrderStatus(tgClient, chatID, guest.Phone, schema, orderID, user.UserID)
+				cont.setGuestState(schema, guest, "checking_order")
+			default:
+				// Truly free-form → let AI reply
+				cont.handleAIMessage(tgClient, chatID, guest, text, schema, user.UserID, tenantID)
+			}
 		}
 
 	case "registered":
@@ -858,8 +863,18 @@ func (cont *TelegramContImpl) getAIPromptSetting(schema, subGroupName, settingNa
 // handleAIMessage forwards user message to n8n. N8N will call /internal/{schema}/ai-context
 // to fetch prompts + live data, then build the full prompt and call OpenAI.
 // clientID = user_id of the tenant owner (used as hub key for SSE broadcasts).
-func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, chatID string, guest *domains.Guest, message, schema string, clientID uuid.UUID) {
+// tenantID = tenant UUID used for token usage tracking.
+func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, chatID string, guest *domains.Guest, message, schema string, clientID, tenantID uuid.UUID) {
 	log.Printf("[AI] Handling message for guest %s: %s", guest.ID, message)
+
+	// Check free token limit when no active subscription
+	if !hasActiveSubs(cont.Db, cont.TenantUsageRepo, tenantID) {
+		if freeTokensRemaining(cont.Db, cont.TenantUsageRepo, tenantID) <= 0 {
+			cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"⚠️ This store has reached its free AI message limit.\n\nTo continue using the AI assistant, the store owner needs to upgrade to a paid subscription.\n\nFor assistance, please contact the store directly.")
+			return
+		}
+	}
 
 	guestID := guest.ID
 	guestName := guest.Name
@@ -872,6 +887,23 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 		if err != nil {
 			log.Printf("[AI] n8n error: %v", err)
 			tgClient.SendMessage(chatID, "⚠️ Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.")
+			return
+		}
+
+		// Deduct tokens from free usage if no active subscription
+		if !hasActiveSubs(cont.Db, cont.TenantUsageRepo, tenantID) && n8nResp.UsageTokens > 0 {
+			deductFreeTokens(cont.Db, cont.TenantUsageRepo, tenantID, n8nResp.UsageTokens)
+			log.Printf("[Token] deducted %d tokens for tenant %s", n8nResp.UsageTokens, tenantID)
+		}
+
+		// Check if AI signals show products intent
+		if strings.Contains(n8nResp.Reply, "__ACTION:SHOW_PRODUCTS__") {
+			log.Printf("[AI] Show products intent detected for chat %s", chatID)
+			freshGuest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
+			if err == nil && freshGuest != nil {
+				cont.showProducts(tgClient, chatID, schema, freshGuest, clientID)
+				cont.setGuestState(schema, freshGuest, "browsing_products")
+			}
 			return
 		}
 
@@ -921,6 +953,15 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 			log.Printf("[AI] ✅ Reply sent to %s (%s)", chatID, guestName)
 		}
 	}()
+}
+
+// setGuestState updates the guest conversation state in the database.
+func (cont *TelegramContImpl) setGuestState(schema string, guest *domains.Guest, state string) {
+	if guest.ConversationState == nil {
+		guest.ConversationState = domains.JSONB{}
+	}
+	guest.ConversationState["state"] = state
+	cont.GuestRepo.Update(cont.Db, schema, *guest)
 }
 
 // sendBotMessage sends a text reply to Telegram, saves it to guest_message, and broadcasts to SSE.

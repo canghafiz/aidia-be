@@ -155,6 +155,7 @@ func NewRouter(r Router) *Router {
 		subs.Use(middleware)
 		{
 			subs.GET("/current", r.Dependency.SubsCont.GetCurrentSubs)
+			subs.GET("/token-usage", r.Dependency.SubsCont.GetTokenUsage)
 		}
 
 		// Product Category

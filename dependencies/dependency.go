@@ -101,8 +101,8 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		OrderPaymentCont:                implCont.NewOrderPaymentContImpl(orderPaymentServ),
 		KitchenOrderCont:                implCont.NewKitchenOrderContImpl(kitchenOrderServ, userRepo, db),
 		ChatCont:                        implCont.NewChatContImpl(chatServ, guestRepo, userRepo, db, jwtKey),
-		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, n8nTelegramServ, db),
-		WhatsAppCont:                    implCont.NewWhatsAppContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, n8nWhatsAppServ, whatsAppConnectionRepo, db),
+		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, tenantUsageRepo, n8nTelegramServ, db),
+		WhatsAppCont:                    implCont.NewWhatsAppContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, tenantUsageRepo, n8nWhatsAppServ, whatsAppConnectionRepo, db),
 		WhatsAppOAuthCont:               implCont.NewWhatsAppOAuthContImpl(whatsAppConnectionRepo, settingRepo, db, jwtKey),
 	}
 }
