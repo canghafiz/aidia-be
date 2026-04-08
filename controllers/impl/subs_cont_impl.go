@@ -80,7 +80,7 @@ func (cont *SubsContImpl) GetCurrentSubs(ctx *gin.Context) {
 // @Failure      403  {object}  helpers.ApiResponse                                 "Forbidden — user is not a Client"
 // @Failure      404  {object}  helpers.ApiResponse                                 "Tenant not found"
 // @Failure      500  {object}  helpers.ApiResponse                                 "Internal server error"
-// @Router       /api/v1/subs/token-usage [get]
+// @Router       /subs/token-usage [get]
 func (cont *SubsContImpl) GetTokenUsage(ctx *gin.Context) {
 	accessToken := helpers.GetJwtToken(ctx)
 

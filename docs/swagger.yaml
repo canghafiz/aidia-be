@@ -1223,63 +1223,6 @@ paths:
       summary: Get AI Context for Schema (Internal API for n8n)
       tags:
       - Internal
-  /api/v1/subs/token-usage:
-    get:
-      description: |-
-        Returns the current AI token usage for the authenticated tenant.
-
-        **Free Plan:**
-        - `plan_type` = "free"
-        - `is_unlimited` = false
-        - `token_limit` = 1,000,000
-        - `tokens_used` = total tokens consumed so far
-        - `tokens_remaining` = tokens left before the bot is blocked
-        - `percentage_used` = percentage of quota used (0–100)
-        - `message` shows a warning when usage ≥ 80%, and an upgrade prompt when limit is reached
-
-        **Paid Plan:**
-        - `plan_type` = "paid"
-        - `is_unlimited` = true
-        - All numeric fields return -1 (unlimited)
-
-        **Error Responses:**
-        - 401 — Token missing, expired, or invalid
-        - 403 — Authenticated user is not a Client
-        - 404 — Tenant record not found
-        - 500 — Failed to retrieve subscription or usage data
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Token usage data
-          schema:
-            allOf:
-            - $ref: '#/definitions/helpers.ApiResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/subs.TokenUsageResponse'
-              type: object
-        "401":
-          description: Unauthorized — invalid or missing token
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "403":
-          description: Forbidden — user is not a Client
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "404":
-          description: Tenant not found
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal server error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      security:
-      - BearerAuth: []
-      summary: Get AI Token Usage
-      tags:
-      - Subscription
   /api/v1/webhook/telegram/{schema}:
     post:
       consumes:
@@ -4019,6 +3962,63 @@ paths:
             $ref: '#/definitions/helpers.ApiResponse'
       security:
       - BearerAuth: []
+      tags:
+      - Subscription
+  /subs/token-usage:
+    get:
+      description: |-
+        Returns the current AI token usage for the authenticated tenant.
+
+        **Free Plan:**
+        - `plan_type` = "free"
+        - `is_unlimited` = false
+        - `token_limit` = 1,000,000
+        - `tokens_used` = total tokens consumed so far
+        - `tokens_remaining` = tokens left before the bot is blocked
+        - `percentage_used` = percentage of quota used (0–100)
+        - `message` shows a warning when usage ≥ 80%, and an upgrade prompt when limit is reached
+
+        **Paid Plan:**
+        - `plan_type` = "paid"
+        - `is_unlimited` = true
+        - All numeric fields return -1 (unlimited)
+
+        **Error Responses:**
+        - 401 — Token missing, expired, or invalid
+        - 403 — Authenticated user is not a Client
+        - 404 — Tenant record not found
+        - 500 — Failed to retrieve subscription or usage data
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token usage data
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/subs.TokenUsageResponse'
+              type: object
+        "401":
+          description: Unauthorized — invalid or missing token
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "403":
+          description: Forbidden — user is not a Client
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "404":
+          description: Tenant not found
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get AI Token Usage
       tags:
       - Subscription
   /users:
