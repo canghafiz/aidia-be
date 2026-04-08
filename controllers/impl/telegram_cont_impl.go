@@ -443,8 +443,17 @@ func (cont *TelegramContImpl) showMenu(tgClient *helpers.TelegramClient, chatID,
 func parseCheckOrderIntent(text string) (bool, int) {
 	lower := strings.ToLower(text)
 
-	// Must contain "order" or "pesanan" as base word
-	hasOrderWord := strings.Contains(lower, "order") || strings.Contains(lower, "pesanan")
+	// Must contain order-related noun
+	orderNouns := []string{
+		"order", "pesanan", "pemesanan", "belanjaan", "transaksi",
+	}
+	hasOrderWord := false
+	for _, w := range orderNouns {
+		if strings.Contains(lower, w) {
+			hasOrderWord = true
+			break
+		}
+	}
 	if !hasOrderWord {
 		return false, 0
 	}
@@ -452,7 +461,9 @@ func parseCheckOrderIntent(text string) (bool, int) {
 	// Must also have a qualifying word showing intent to check/view
 	qualifiers := []string{
 		"check", "status", "my", "see", "view", "track", "history",
-		"cek", "lihat", "recent", "latest", "last", "#",
+		"cek", "lihat", "gimana", "mana", "sampai", "nyampe",
+		"dimana", "progress", "update", "recent", "latest", "last",
+		"udah", "sudah", "belum", "selesai", "done", "#",
 	}
 	hasQualifier := false
 	for _, q := range qualifiers {
@@ -491,32 +502,85 @@ func isCheckOrderIntent(text string) bool {
 	return ok
 }
 
-// isCreateOrderIntent detects create order intent from free-form text
+// isCreateOrderIntent detects create order intent from free-form text.
+// Strategy: must have order-action verb AND order-noun (or just strong single phrases).
 func isCreateOrderIntent(text string) bool {
 	lower := strings.ToLower(text)
-	keywords := []string{"i want to order", "i wanna order", "place order", "make order", "create order", "mau order", "mau pesan", "buat pesanan", "pesan sekarang"}
-	for _, kw := range keywords {
+
+	// Strong single phrases — langsung true
+	strongPhrases := []string{
+		"place order", "make order", "create order", "mau order", "mau pesan",
+		"mau beli", "mau beli", "buat pesanan", "pesan sekarang", "order sekarang",
+		"i want to order", "i wanna order", "i'd like to order",
+		"i want to buy", "i wanna buy", "pengen order", "pengen pesan", "pengen beli",
+		"ingin order", "ingin pesan", "ingin beli", "want to purchase",
+		"order dong", "pesan dong", "beli dong", "order ya", "pesan ya",
+		"bisa order", "bisa pesan", "bisa beli",
+	}
+	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
 			return true
 		}
 	}
+
+	// Word-group: action verb + order noun
+	actionVerbs := []string{
+		"order", "pesan", "beli", "purchase", "buy", "checkout",
+	}
+	orderNouns := []string{
+		"makanan", "minuman", "produk", "item", "barang", "food", "drink",
+	}
+	for _, verb := range actionVerbs {
+		for _, noun := range orderNouns {
+			if strings.Contains(lower, verb) && strings.Contains(lower, noun) {
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
-// isShowProductsIntent detects intent to view products from free-form text
+// isShowProductsIntent detects intent to view products/menu from free-form text.
+// Strategy: must have view-verb AND product-noun, or strong single phrases.
 func isShowProductsIntent(text string) bool {
 	lower := strings.ToLower(text)
-	keywords := []string{
-		"see product", "show product", "view product", "lihat produk", "lihat menu",
-		"see menu", "show menu", "view menu", "what do you have", "what do you sell",
-		"apa saja produk", "ada apa", "ada menu", "daftar produk", "daftar menu",
-		"your product", "your menu", "see your", "show your",
+
+	// Strong single phrases — langsung true
+	strongPhrases := []string{
+		"see product", "show product", "view product", "lihat produk",
+		"see menu", "show menu", "view menu", "lihat menu",
+		"what do you have", "what do you sell", "what do you offer",
+		"what's on the menu", "what is on the menu",
+		"apa saja produk", "apa aja produk", "apa produk",
+		"ada menu apa", "ada produk apa", "ada apa aja", "ada apa saja",
+		"daftar produk", "daftar menu", "tampilkan produk", "tampilkan menu",
+		"kasih lihat produk", "kasih lihat menu",
+		"your product", "your menu",
 	}
-	for _, kw := range keywords {
+	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
 			return true
 		}
 	}
+
+	// Word-group: view verb + product noun
+	viewVerbs := []string{
+		"see", "show", "view", "display", "browse", "check out",
+		"lihat", "liat", "tampilkan", "kasih", "cek",
+	}
+	productNouns := []string{
+		"product", "produk", "menu", "makanan", "minuman", "item",
+		"barang", "food", "drink", "catalogue", "catalog",
+	}
+	for _, verb := range viewVerbs {
+		for _, noun := range productNouns {
+			if strings.Contains(lower, verb) && strings.Contains(lower, noun) {
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
