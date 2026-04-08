@@ -35,18 +35,26 @@ type N8NMessageHistory struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-func NewN8NServImpl() *N8NServImpl {
+func NewN8NServImpl(webhookURL string) *N8NServImpl {
 	return &N8NServImpl{
-		N8NURL: os.Getenv("N8N_WEBHOOK_URL"),
+		N8NURL: webhookURL,
 		APIKey: os.Getenv("N8N_API_KEY"),
 		HTTPClient: &http.Client{
-			Timeout: 120 * time.Second, // Increase timeout for slow connections
+			Timeout: 120 * time.Second,
 			Transport: &http.Transport{
 				TLSHandshakeTimeout:   30 * time.Second,
 				ResponseHeaderTimeout: 60 * time.Second,
 			},
 		},
 	}
+}
+
+func NewTelegramN8NServImpl() *N8NServImpl {
+	return NewN8NServImpl(os.Getenv("N8N_TELEGRAM_WEBHOOK_URL"))
+}
+
+func NewWhatsAppN8NServImpl() *N8NServImpl {
+	return NewN8NServImpl(os.Getenv("N8N_WHATSAPP_WEBHOOK_URL"))
 }
 
 // ProcessMessage forwards message to n8n for AI processing

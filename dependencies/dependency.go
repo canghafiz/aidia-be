@@ -33,6 +33,8 @@ type Dependency struct {
 	KitchenOrderCont                controllers.KitchenOrderCont
 	ChatCont                        controllers.ChatCont
 	TelegramCont                    controllers.TelegramCont
+	WhatsAppCont                    controllers.WhatsAppCont
+	WhatsAppOAuthCont               controllers.WhatsAppOAuthCont
 }
 
 func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *Dependency {
@@ -55,9 +57,11 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	kitchenOrderRepo := impl.NewKitchenOrderRepoImpl()
 	guestRepo := impl.NewGuestRepoImpl()
 	guestMessageRepo := impl.NewGuestMessageRepoImpl()
+	whatsAppConnectionRepo := impl.NewWhatsAppConnectionRepoImpl()
 
 	// Serv
-	n8nServ := implServ.NewN8NServImpl()
+	n8nTelegramServ := implServ.NewTelegramN8NServImpl()
+	n8nWhatsAppServ := implServ.NewWhatsAppN8NServImpl()
 	userServ := implServ.NewUsersServImpl(db, validator, userRepo, jwtKey)
 	roleServ := implServ.NewRoleServImpl(db, roleRepo)
 	settingServ := implServ.NewSettingServImpl(db, jwtKey, settingRepo)
@@ -97,6 +101,8 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		OrderPaymentCont:                implCont.NewOrderPaymentContImpl(orderPaymentServ),
 		KitchenOrderCont:                implCont.NewKitchenOrderContImpl(kitchenOrderServ, userRepo, db),
 		ChatCont:                        implCont.NewChatContImpl(chatServ, guestRepo, userRepo, db, jwtKey),
-		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, n8nServ, db),
+		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, n8nTelegramServ, db),
+		WhatsAppCont:                    implCont.NewWhatsAppContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, n8nWhatsAppServ, whatsAppConnectionRepo, db),
+		WhatsAppOAuthCont:               implCont.NewWhatsAppOAuthContImpl(whatsAppConnectionRepo, settingRepo, db, jwtKey),
 	}
 }

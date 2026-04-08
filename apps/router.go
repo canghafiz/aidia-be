@@ -34,7 +34,7 @@ func NewRouter(r Router) *Router {
 
 	// Setup CORS global
 	r.Engine.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowAllOrigins:  true,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
@@ -270,10 +270,29 @@ func NewRouter(r Router) *Router {
 			integrationGroup.PATCH("/:sub_group_name", r.Dependency.SettingCont.UpdateClientIntegration)
 		}
 
+		// WhatsApp Embedded Signup (butuh auth)
+		whatsappOAuthGroup := generalGroup.Group("client/:client_id/whatsapp").Use(middleware)
+		{
+			whatsappOAuthGroup.POST("/connect", r.Dependency.WhatsAppOAuthCont.Connect)
+			whatsappOAuthGroup.GET("/status", r.Dependency.WhatsAppOAuthCont.Status)
+			whatsappOAuthGroup.DELETE("/disconnect", r.Dependency.WhatsAppOAuthCont.Disconnect)
+		}
+
 		// Telegram Webhook (public - no middleware)
 		telegramWebhookGroup := generalGroup.Group("webhook/telegram")
 		{
 			telegramWebhookGroup.POST("/:schema", r.Dependency.TelegramCont.Webhook)
+		}
+
+		// WhatsApp Webhook — Global (Embedded Signup, satu URL untuk semua tenant)
+		// GET = verifikasi Meta, POST = pesan masuk (routing via phone_number_id)
+		whatsappWebhookGroup := generalGroup.Group("webhook/whatsapp")
+		{
+			whatsappWebhookGroup.GET("", r.Dependency.WhatsAppCont.VerifyWebhookGlobal)
+			whatsappWebhookGroup.POST("", r.Dependency.WhatsAppCont.WebhookGlobal)
+			// Legacy per-tenant routes (untuk tenant yang masih pakai manual token)
+			whatsappWebhookGroup.GET("/:schema", r.Dependency.WhatsAppCont.VerifyWebhook)
+			whatsappWebhookGroup.POST("/:schema", r.Dependency.WhatsAppCont.Webhook)
 		}
 
 		// Stripe Webhook for Client Payments (public - no middleware)
@@ -286,6 +305,7 @@ func NewRouter(r Router) *Router {
 		internalGroup := generalGroup.Group("internal")
 		{
 			internalGroup.GET("/telegram/:schema/ai-context", r.Dependency.TelegramCont.GetAIContextForSchema)
+			internalGroup.GET("/whatsapp/:schema/ai-context", r.Dependency.WhatsAppCont.GetAIContextForSchema)
 		}
 	}
 
