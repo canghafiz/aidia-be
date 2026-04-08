@@ -5,7 +5,6 @@ import (
 	"backend/middlewares"
 	"net/http"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -32,15 +31,21 @@ func NewRouter(r Router) *Router {
 	// Public order detail page (no auth) — used in Telegram order notifications
 	r.Engine.GET("/orders/:schema/:id", r.Dependency.TelegramCont.GetPublicOrderDetail)
 
-	// Setup CORS global
-	r.Engine.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
-		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
-		AllowCredentials: false,
-		MaxAge:           86400,
-	}))
+	// Setup CORS global — custom middleware agar OPTIONS preflight selalu ditangani
+	r.Engine.Use(func(ctx *gin.Context) {
+		ctx.Header("Access-Control-Allow-Origin", "*")
+		ctx.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
+		ctx.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization, Accept, X-Requested-With")
+		ctx.Header("Access-Control-Expose-Headers", "Content-Length, Content-Type")
+		ctx.Header("Access-Control-Max-Age", "86400")
+
+		if ctx.Request.Method == "OPTIONS" {
+			ctx.AbortWithStatus(204)
+			return
+		}
+
+		ctx.Next()
+	})
 
 	middleware := middlewares.Middleware(r.Dependency.JwtKey)
 
