@@ -110,6 +110,12 @@ func isValidPhoneNumber(phone string) bool {
 	return matched
 }
 
+// isValidEmail validates email format
+func isValidEmail(email string) bool {
+	matched, _ := regexp.MatchString(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`, strings.TrimSpace(email))
+	return matched
+}
+
 // Webhook godoc
 // @Summary      Telegram Webhook
 // @Description  Receive incoming Telegram messages

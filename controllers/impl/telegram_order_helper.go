@@ -159,6 +159,10 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 		if guest.ConversationState == nil {
 			guest.ConversationState = domains.JSONB{}
 		}
+		if !isValidEmail(text) {
+			cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Invalid email format. Please enter a valid email address.\n\nExample: john@example.com\n\nType 'menu' to cancel")
+			return
+		}
 		guest.ConversationState["customer_email"] = text
 		guest.ConversationState["order_step"] = "address"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
