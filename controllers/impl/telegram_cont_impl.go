@@ -220,7 +220,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 		guest, _ = cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 
 		// NEW GUEST - Ask for phone number
-		tgClient.SendMessage(chatID, "👋 Welcome! To complete your registration, please send your phone number.\n\nFormat: +628123456789\n\n⚠️ This is required to continue.")
+		cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "👋 Welcome! To complete your registration, please send your phone number.\n\nFormat: +628123456789\n\n⚠️ This is required to continue.")
 
 		ctx.JSON(200, gin.H{"status": "ok"})
 		return
@@ -258,10 +258,10 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 				menu += "Type 4 - FAQ\n\n"
 				menu += "Just type 1, 2, 3, or 4"
 
-				tgClient.SendMessage(chatID, menu)
+				cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
 			} else {
 				// Invalid phone format
-				tgClient.SendMessage(chatID, "❌ Invalid phone number format.\n\nPlease use format: +628123456789\n\nExample: +628123456789")
+				cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "❌ Invalid phone number format.\n\nPlease use format: +628123456789\n\nExample: +628123456789")
 			}
 		}
 
@@ -305,7 +305,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 				return
 			}
 			// Create Order - Start order creation flow
-			cont.startCreateOrder(tgClient, chatID, schema, guest)
+			cont.startCreateOrder(tgClient, chatID, schema, guest, user.UserID)
 
 			// Update state to creating_order
 			if guest.ConversationState == nil {
@@ -366,7 +366,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			if !cont.isOperationalHoursOpen(schema) {
 				cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "⏰ Sorry, we are currently outside our operational hours. Please try again during business hours.")
 			} else {
-				cont.startCreateOrder(tgClient, chatID, schema, guest)
+				cont.startCreateOrder(tgClient, chatID, schema, guest, user.UserID)
 
 				if guest.ConversationState == nil {
 					guest.ConversationState = domains.JSONB{}
@@ -376,7 +376,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			}
 		} else if text == "3" {
 			// Check order status — show most recent by default
-			cont.showOrderStatus(tgClient, chatID, guest.Phone, schema, -1, user.UserID)
+			cont.showOrderStatus(tgClient, chatID, schema, guest, -1, user.UserID)
 
 			if guest.ConversationState == nil {
 				guest.ConversationState = domains.JSONB{}
@@ -407,10 +407,10 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 					cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "⏰ Sorry, we are currently outside our operational hours. Please try again during business hours.")
 				} else {
 					cont.setGuestState(schema, guest, "creating_order")
-					cont.startCreateOrder(tgClient, chatID, schema, guest)
+					cont.startCreateOrder(tgClient, chatID, schema, guest, user.UserID)
 				}
 			case "CHECK_ORDER":
-				cont.showOrderStatus(tgClient, chatID, guest.Phone, schema, orderID, user.UserID)
+				cont.showOrderStatus(tgClient, chatID, schema, guest, orderID, user.UserID)
 				cont.setGuestState(schema, guest, "checking_order")
 			default:
 				// Truly free-form → let AI reply
@@ -679,13 +679,7 @@ func (cont *TelegramContImpl) showProducts(tgClient *helpers.TelegramClient, cha
 
 // showOrderStatus shows order status from database.
 // orderID: 0 = all orders, -1 = most recent only, >0 = specific order ID.
-func (cont *TelegramContImpl) showOrderStatus(tgClient *helpers.TelegramClient, chatID, phone, schema string, orderID int, clientID uuid.UUID) {
-	guest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
-	if err != nil || guest == nil {
-		tgClient.SendMessage(chatID, "📦 No orders found.\n\nType 'menu' to go back.")
-		return
-	}
-
+func (cont *TelegramContImpl) showOrderStatus(tgClient *helpers.TelegramClient, chatID, schema string, guest *domains.Guest, orderID int, clientID uuid.UUID) {
 	guestPhone := guest.Phone
 	phoneNumber := guestPhone
 	if len(guestPhone) > 3 && guestPhone[0] == '+' {
@@ -886,7 +880,7 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 		n8nResp, err := cont.N8NServ.ProcessMessage(schema, guestID.String(), chatID, message, "", history)
 		if err != nil {
 			log.Printf("[AI] n8n error: %v", err)
-			tgClient.SendMessage(chatID, "⚠️ Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.")
+			cont.sendBotMessage(tgClient, clientID, guestID, guestName, chatID, schema, "⚠️ Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.")
 			return
 		}
 
@@ -912,7 +906,7 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 			log.Printf("[AI] Create order intent detected for chat %s", chatID)
 			freshGuest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 			if err == nil && freshGuest != nil {
-				cont.startCreateOrder(tgClient, chatID, schema, freshGuest)
+				cont.startCreateOrder(tgClient, chatID, schema, freshGuest, clientID)
 			}
 			return
 		}
@@ -929,29 +923,13 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 			}
 			freshGuest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 			if err == nil && freshGuest != nil {
-				cont.showOrderStatus(tgClient, chatID, freshGuest.Phone, schema, orderID, clientID)
+				cont.showOrderStatus(tgClient, chatID, schema, freshGuest, orderID, clientID)
 			}
 			return
 		}
 
-		aiMsg := domains.GuestMessage{
-			GuestID:  guestID,
-			Role:     "assistant",
-			Type:     "text",
-			Message:  n8nResp.Reply,
-			IsHuman:  false,
-			IsActive: true,
-		}
-		cont.GuestMessageRepo.Create(cont.Db, schema, aiMsg)
-
-		// Broadcast AI reply to SSE clients
-		cont.broadcastMessage(clientID, guestID, guestName, n8nResp.Reply, "assistant", false)
-
-		if _, err := tgClient.SendMessage(chatID, n8nResp.Reply); err != nil {
-			log.Printf("[AI] Error sending reply: %v", err)
-		} else {
-			log.Printf("[AI] ✅ Reply sent to %s (%s)", chatID, guestName)
-		}
+		cont.sendBotMessage(tgClient, clientID, guestID, guestName, chatID, schema, n8nResp.Reply)
+		log.Printf("[AI] ✅ Reply sent to %s (%s)", chatID, guestName)
 	}()
 }
 

@@ -27,13 +27,13 @@ type ParsedProduct struct {
 }
 
 // startCreateOrder starts the order creation flow
-func (cont *TelegramContImpl) startCreateOrder(tgClient *helpers.TelegramClient, chatID, schema string, guest *domains.Guest) {
+func (cont *TelegramContImpl) startCreateOrder(tgClient *helpers.TelegramClient, chatID, schema string, guest *domains.Guest, clientID uuid.UUID) {
 	log.Printf("[Order] Starting order creation for guest %s", guest.ID)
 
 	// Get products
 	products, total, _ := cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 20})
 	if total == 0 {
-		tgClient.SendMessage(chatID, "📦 No products available at the moment.\n\nType 'menu' to go back to main menu.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "📦 No products available at the moment.\n\nType 'menu' to go back to main menu.")
 		return
 	}
 
@@ -50,7 +50,7 @@ func (cont *TelegramContImpl) startCreateOrder(tgClient *helpers.TelegramClient,
 	message += "• _'2 Fried Rice and 1 Iced Tea'_\n"
 	message += "\nType 'menu' to cancel"
 
-	tgClient.SendMessage(chatID, message)
+	cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, message)
 
 	// Update conversation state
 	if guest.ConversationState == nil {
@@ -96,7 +96,7 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 
 	if orderStep == "" {
 		log.Printf("[Order] ERROR: order_step is empty! ConversationState: %v", guest.ConversationState)
-		tgClient.SendMessage(chatID, "⚠️ Order session expired. Please type 'menu' to start over.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "⚠️ Order session expired. Please type 'menu' to start over.")
 		return
 	}
 
@@ -122,7 +122,7 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 			msg += "• _'1 Mie Tek Tek'_\n"
 			msg += "• _'2 Fried Rice and 1 Iced Tea'_\n\n"
 			msg += "Type 'menu' to cancel"
-			tgClient.SendMessage(chatID, msg)
+			cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
 			return
 		}
 
@@ -143,7 +143,7 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 		guest.ConversationState["order_step"] = "name"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
-		tgClient.SendMessage(chatID, confirmMsg+"\n*What is your full name?*\n\nType 'menu' to cancel")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, confirmMsg+"\n*What is your full name?*\n\nType 'menu' to cancel")
 
 	case "name":
 		if guest.ConversationState == nil {
@@ -153,7 +153,7 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 		guest.ConversationState["order_step"] = "email"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
-		tgClient.SendMessage(chatID, "✅ Name saved!\n\n*Email address?* (for invoice delivery)\n\nExample: test@example.com\n\nType 'menu' to cancel")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "✅ Name saved!\n\n*Email address?* (for invoice delivery)\n\nExample: test@example.com\n\nType 'menu' to cancel")
 
 	case "email":
 		if guest.ConversationState == nil {
@@ -163,7 +163,7 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 		guest.ConversationState["order_step"] = "address"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
-		tgClient.SendMessage(chatID, "✅ Email saved!\n\n*Delivery address?* (Street, building, etc.)\n\nType 'menu' to cancel")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "✅ Email saved!\n\n*Delivery address?* (Street, building, etc.)\n\nType 'menu' to cancel")
 
 	case "address":
 		if guest.ConversationState == nil {
@@ -173,19 +173,19 @@ func (cont *TelegramContImpl) continueCreateOrder(tgClient *helpers.TelegramClie
 		guest.ConversationState["order_step"] = "postal_code"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
-		tgClient.SendMessage(chatID, "✅ Address saved!\n\n*Postal code?*\n\nType 'menu' to cancel")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "✅ Address saved!\n\n*Postal code?*\n\nType 'menu' to cancel")
 
 	case "postal_code":
-		cont.finalizeCreateOrder(tgClient, chatID, schema, guest, text)
+		cont.finalizeCreateOrder(tgClient, chatID, schema, guest, text, clientID)
 
 	default:
 		log.Printf("[Order] Unknown order_step: %s", orderStep)
-		tgClient.SendMessage(chatID, "⚠️ Invalid step. Please type 'menu' to start over.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "⚠️ Invalid step. Please type 'menu' to start over.")
 	}
 }
 
 // finalizeCreateOrder creates the order and saves to database
-func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClient, chatID, schema string, guest *domains.Guest, postalCode string) {
+func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClient, chatID, schema string, guest *domains.Guest, postalCode string, clientID uuid.UUID) {
 	if guest.ConversationState == nil {
 		guest.ConversationState = domains.JSONB{}
 	}
@@ -211,7 +211,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	tx := cont.Db.Begin()
 	if tx.Error != nil {
 		log.Printf("[Order] ERROR: Failed to start transaction: %v", tx.Error)
-		tgClient.SendMessage(chatID, "❌ Error creating order. Please try again.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Error creating order. Please try again.")
 		return
 	}
 
@@ -228,7 +228,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 		if err != nil {
 			tx.Rollback()
 			log.Printf("[Order] ERROR: Failed to create customer: %v", err)
-			tgClient.SendMessage(chatID, "❌ Error creating customer. Please try again.")
+			cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Error creating customer. Please try again.")
 			return
 		}
 		log.Printf("[Order] Created new customer: ID=%d, Name=%s", customer.ID, customer.Name)
@@ -267,7 +267,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	if len(orderProducts) == 0 {
 		tx.Rollback()
 		log.Printf("[Order] ERROR: No valid products in order")
-		tgClient.SendMessage(chatID, "❌ No valid products in order. Please try again.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ No valid products in order. Please try again.")
 		return
 	}
 
@@ -285,7 +285,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	if err != nil {
 		tx.Rollback()
 		log.Printf("[Order] ERROR: Failed to create order: %v", err)
-		tgClient.SendMessage(chatID, "❌ Error creating order. Please try again.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Error creating order. Please try again.")
 		return
 	}
 	log.Printf("[Order] Created order: ID=%d, CustomerID=%d, Total=%f", order.ID, customer.ID, totalPrice)
@@ -298,7 +298,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	if err != nil {
 		tx.Rollback()
 		log.Printf("[Order] ERROR: Failed to create order products: %v", err)
-		tgClient.SendMessage(chatID, "❌ Error creating order products. Please try again.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Error creating order products. Please try again.")
 		return
 	}
 	log.Printf("[Order] Created %d order products", len(orderProducts))
@@ -352,7 +352,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 		if err != nil {
 			tx.Rollback()
 			log.Printf("[Order] ERROR: Failed to create order payment: %v", err)
-			tgClient.SendMessage(chatID, "❌ Error creating payment. Please try again.")
+			cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Error creating payment. Please try again.")
 			return
 		}
 		log.Printf("[Order] Created new order payment")
@@ -361,7 +361,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
 		log.Printf("[Order] ERROR: Failed to commit transaction: %v", err)
-		tgClient.SendMessage(chatID, "❌ Error finalizing order. Please try again.")
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, "❌ Error finalizing order. Please try again.")
 		return
 	}
 
@@ -389,7 +389,7 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	summary += "⏰ *Order expires in 15 minutes!*\n\n"
 	summary += "Type 'menu' to go back to the main menu."
 
-	tgClient.SendMessage(chatID, summary)
+	cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema, summary)
 
 	// 8. Reset state
 	guest.ConversationState["state"] = "waiting_for_menu"
