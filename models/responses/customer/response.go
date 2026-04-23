@@ -8,8 +8,10 @@ import (
 type Response struct {
 	ID               int       `json:"id"`
 	Name             string    `json:"name"`
-	PhoneCountryCode string    `json:"phone_country_code"`
-	PhoneNumber      string    `json:"phone_number"`
+	Username         *string   `json:"username,omitempty"`
+	PhoneCountryCode *string   `json:"phone_country_code,omitempty"`
+	PhoneNumber      *string   `json:"phone_number,omitempty"`
+	GuestID          *string   `json:"guest_id,omitempty"`
 	AccountType      string    `json:"account_type"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
@@ -19,6 +21,7 @@ func ToResponse(c domains.Customer) Response {
 	return Response{
 		ID:               c.ID,
 		Name:             c.Name,
+		Username:         c.Username,
 		PhoneCountryCode: c.PhoneCountryCode,
 		PhoneNumber:      c.PhoneNumber,
 		AccountType:      c.AccountType,

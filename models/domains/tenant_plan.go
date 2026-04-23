@@ -20,11 +20,12 @@ type TenantPlan struct {
 	StartDate                   *time.Time `gorm:"column:start_date"`
 	ExpiredDate                 *time.Time `gorm:"column:expired_date"`
 	PlanStatus                  string     `gorm:"column:plan_status;not null;default:Inactive"`
-	StripeSessionID             *string    `gorm:"column:stripe_session_id"`
-	StripeSessionURL            *string    `gorm:"column:stripe_session_url"`
-	StripePaymentStatus         *string    `gorm:"column:stripe_payment_status"`
-	StripePaymentMessage        *string    `gorm:"column:stripe_payment_message"`
-	StripeSubscriptionInvoiceID *string    `gorm:"column:stripe_subscription_invoice_id"`
+	PaymentGateway          string  `gorm:"column:payment_gateway;not null;default:'stripe'"`
+	PaymentSessionID        *string `gorm:"column:payment_session_id"`
+	PaymentSessionURL       *string `gorm:"column:payment_session_url"`
+	PaymentGatewayStatus    *string `gorm:"column:payment_gateway_status"`
+	PaymentGatewayMessage   *string `gorm:"column:payment_gateway_message"`
+	SubscriptionInvoiceID   *string `gorm:"column:subscription_invoice_id"`
 	IsPaid                      bool       `gorm:"column:is_paid;not null;default:false"`
 	IsActive                    bool       `gorm:"column:is_active;not null;default:true"`
 	CreatedAt                   time.Time  `gorm:"column:created_at;autoCreateTime"`

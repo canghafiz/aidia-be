@@ -12,6 +12,6 @@ type OrderPaymentRepo interface {
 	GetAll(db *gorm.DB, schema string, pagination domains.Pagination) ([]domains.OrderPayment, int, error)
 	GetByID(db *gorm.DB, schema string, id uuid.UUID) (*domains.OrderPayment, error)
 	GetByOrderID(db *gorm.DB, schema string, orderID int) (*domains.OrderPayment, error)
-	GetByStripeInvoiceID(db *gorm.DB, schema, invoiceID string) (*domains.OrderPayment, error)
+	GetByPaymentInvoiceID(db *gorm.DB, schema, invoiceID string) (*domains.OrderPayment, error)
 	UpdateStatus(db *gorm.DB, schema string, id uuid.UUID, status domains.PaymentStatus) error
 }

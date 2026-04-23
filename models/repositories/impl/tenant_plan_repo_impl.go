@@ -64,10 +64,10 @@ func (repo *TenantPlanRepoImpl) GetByTenantID(db *gorm.DB, tenantID uuid.UUID, p
 	return tenantPlans, int(total), nil
 }
 
-func (repo *TenantPlanRepoImpl) GetByStripeSessionID(db *gorm.DB, sessionID string) (*domains.TenantPlan, error) {
+func (repo *TenantPlanRepoImpl) GetByPaymentSessionID(db *gorm.DB, sessionID string) (*domains.TenantPlan, error) {
 	var tenantPlan domains.TenantPlan
 	if err := db.Preload("Plan").Preload("Tenant").
-		Where("stripe_session_id = ?", sessionID).
+		Where("payment_session_id = ?", sessionID).
 		First(&tenantPlan).Error; err != nil {
 		return nil, err
 	}
@@ -90,19 +90,22 @@ func (repo *TenantPlanRepoImpl) GetLastSequenceToday(db *gorm.DB) (int, error) {
 	return int(count), nil
 }
 
-func (repo *TenantPlanRepoImpl) UpdateStripeSession(db *gorm.DB, tenantPlan domains.TenantPlan) error {
+func (repo *TenantPlanRepoImpl) UpdatePaymentSession(db *gorm.DB, tenantPlan domains.TenantPlan) error {
 	updates := map[string]interface{}{}
-	if tenantPlan.StripeSessionID != nil {
-		updates["stripe_session_id"] = tenantPlan.StripeSessionID
+	if tenantPlan.PaymentGateway != "" {
+		updates["payment_gateway"] = tenantPlan.PaymentGateway
 	}
-	if tenantPlan.StripeSessionURL != nil {
-		updates["stripe_session_url"] = tenantPlan.StripeSessionURL
+	if tenantPlan.PaymentSessionID != nil {
+		updates["payment_session_id"] = tenantPlan.PaymentSessionID
 	}
-	if tenantPlan.StripePaymentStatus != nil {
-		updates["stripe_payment_status"] = tenantPlan.StripePaymentStatus
+	if tenantPlan.PaymentSessionURL != nil {
+		updates["payment_session_url"] = tenantPlan.PaymentSessionURL
 	}
-	if tenantPlan.StripeSubscriptionInvoiceID != nil {
-		updates["stripe_subscription_invoice_id"] = tenantPlan.StripeSubscriptionInvoiceID
+	if tenantPlan.PaymentGatewayStatus != nil {
+		updates["payment_gateway_status"] = tenantPlan.PaymentGatewayStatus
+	}
+	if tenantPlan.SubscriptionInvoiceID != nil {
+		updates["subscription_invoice_id"] = tenantPlan.SubscriptionInvoiceID
 	}
 	if len(updates) > 0 {
 		if err := db.Model(&domains.TenantPlan{}).
@@ -121,11 +124,11 @@ func (repo *TenantPlanRepoImpl) UpdatePaymentStatus(db *gorm.DB, tenantPlan doma
 	if tenantPlan.PlanStatus != "" {
 		updates["plan_status"] = tenantPlan.PlanStatus
 	}
-	if tenantPlan.StripePaymentStatus != nil {
-		updates["stripe_payment_status"] = tenantPlan.StripePaymentStatus
+	if tenantPlan.PaymentGatewayStatus != nil {
+		updates["payment_gateway_status"] = tenantPlan.PaymentGatewayStatus
 	}
-	if tenantPlan.StripePaymentMessage != nil {
-		updates["stripe_payment_message"] = tenantPlan.StripePaymentMessage
+	if tenantPlan.PaymentGatewayMessage != nil {
+		updates["payment_gateway_message"] = tenantPlan.PaymentGatewayMessage
 	}
 	if tenantPlan.PaidAt != nil {
 		updates["paid_at"] = tenantPlan.PaidAt
@@ -146,10 +149,10 @@ func (repo *TenantPlanRepoImpl) UpdatePaymentStatus(db *gorm.DB, tenantPlan doma
 	return nil
 }
 
-func (repo *TenantPlanRepoImpl) GetByStripeInvoiceID(db *gorm.DB, invoiceID string) (*domains.TenantPlan, error) {
+func (repo *TenantPlanRepoImpl) GetByPaymentInvoiceID(db *gorm.DB, invoiceID string) (*domains.TenantPlan, error) {
 	var tenantPlan domains.TenantPlan
 	if err := db.Preload("Plan").Preload("Tenant").
-		Where("stripe_subscription_invoice_id = ?", invoiceID).
+		Where("subscription_invoice_id = ?", invoiceID).
 		First(&tenantPlan).Error; err != nil {
 		return nil, err
 	}

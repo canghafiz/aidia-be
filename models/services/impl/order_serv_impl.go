@@ -123,8 +123,8 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			customer, err = serv.CustomerRepo.Create(tx, schema, domains.Customer{
 				Name:             request.CustomerName,
-				PhoneCountryCode: request.PhoneCountryCode,
-				PhoneNumber:      request.PhoneNumber,
+				PhoneCountryCode: &request.PhoneCountryCode,
+				PhoneNumber:      &request.PhoneNumber,
 				AccountType:      request.AccountType,
 			})
 			if err != nil {

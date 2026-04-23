@@ -6,10 +6,10 @@ import (
 )
 
 type CustomerDetailResponse struct {
-	ID               int    `json:"id"`
-	Name             string `json:"name"`
-	PhoneCountryCode string `json:"phone_country_code"`
-	PhoneNumber      string `json:"phone_number"`
+	ID               int     `json:"id"`
+	Name             string  `json:"name"`
+	PhoneCountryCode *string `json:"phone_country_code,omitempty"`
+	PhoneNumber      *string `json:"phone_number,omitempty"`
 }
 
 type ProductDetailResponse struct {

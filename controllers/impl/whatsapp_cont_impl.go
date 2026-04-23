@@ -119,6 +119,32 @@ type WhatsAppStatus struct {
 	Status       string `json:"status"`
 	Timestamp    string `json:"timestamp"`
 	RecipientID  string `json:"recipient_id"`
+	Errors       []WhatsAppStatusError `json:"errors"`
+	Conversation *WhatsAppConversation `json:"conversation,omitempty"`
+	Pricing      *WhatsAppPricing      `json:"pricing,omitempty"`
+}
+
+type WhatsAppStatusError struct {
+	Code    int    `json:"code"`
+	Title   string `json:"title"`
+	Message string `json:"message"`
+	ErrorData *struct {
+		Details string `json:"details"`
+	} `json:"error_data,omitempty"`
+}
+
+type WhatsAppConversation struct {
+	ID                  string `json:"id"`
+	ExpirationTimestamp string `json:"expiration_timestamp"`
+	Origin              *struct {
+		Type string `json:"type"`
+	} `json:"origin,omitempty"`
+}
+
+type WhatsAppPricing struct {
+	Billable     bool   `json:"billable"`
+	PricingModel string `json:"pricing_model"`
+	Category     string `json:"category"`
 }
 
 // VerifyWebhook handles Meta's webhook verification (GET request)
@@ -190,6 +216,9 @@ func (cont *WhatsAppContImpl) Webhook(ctx *gin.Context) {
 			if change.Field != "messages" {
 				continue
 			}
+			if len(change.Value.Statuses) > 0 {
+				cont.handleStatuses(schema, change.Value.Statuses)
+			}
 			for _, msg := range change.Value.Messages {
 				if msg.Type != "text" || msg.Text == nil {
 					continue
@@ -200,6 +229,88 @@ func (cont *WhatsAppContImpl) Webhook(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{"status": "ok"})
+}
+
+func (cont *WhatsAppContImpl) handleStatuses(schema string, statuses []WhatsAppStatus) {
+	user, err := cont.UserRepo.FindByUsernameOrEmail(cont.Db, schema, "Tenant")
+	if err != nil || user == nil {
+		log.Printf("[WhatsApp Status] tenant not found for schema=%s: %v", schema, err)
+		return
+	}
+
+	var tenantID uuid.UUID
+	if user.Tenant != nil {
+		tenantID = user.Tenant.TenantID
+	}
+
+	for _, st := range statuses {
+		errorParts := make([]string, 0, len(st.Errors))
+		for _, e := range st.Errors {
+			part := strings.TrimSpace(e.Message)
+			if part == "" {
+				part = strings.TrimSpace(e.Title)
+			}
+			if e.ErrorData != nil && strings.TrimSpace(e.ErrorData.Details) != "" {
+				if part != "" {
+					part += " - "
+				}
+				part += strings.TrimSpace(e.ErrorData.Details)
+			}
+			if part != "" {
+				errorParts = append(errorParts, part)
+			}
+		}
+		errorText := strings.Join(errorParts, " | ")
+
+		log.Printf(
+			"[WhatsApp Status] schema=%s recipient=%s status=%s wamid=%s conversation_id=%s pricing_category=%s errors=%s",
+			schema,
+			st.RecipientID,
+			st.Status,
+			st.ID,
+			func() string {
+				if st.Conversation == nil {
+					return ""
+				}
+				return st.Conversation.ID
+			}(),
+			func() string {
+				if st.Pricing == nil {
+					return ""
+				}
+				return st.Pricing.Category
+			}(),
+			errorText,
+		)
+
+		if strings.TrimSpace(st.RecipientID) == "" || tenantID == uuid.Nil {
+			continue
+		}
+
+		guest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, st.RecipientID)
+		if err != nil || guest == nil {
+			continue
+		}
+
+		eventData := map[string]interface{}{
+			"event": "message_status",
+			"data": map[string]interface{}{
+				"guest_id":      guest.ID.String(),
+				"guest_name":    guest.Name,
+				"platform":      "whatsapp",
+				"message_id":    st.ID,
+				"recipient_id":  st.RecipientID,
+				"status":        st.Status,
+				"timestamp":     st.Timestamp,
+				"error_message": errorText,
+			},
+		}
+		eventJSON, _ := json.Marshal(eventData)
+		h := helpers.GetChatHub()
+		payload := string(eventJSON)
+		h.BroadcastToGuest(user.UserID.String(), guest.ID.String(), payload)
+		h.BroadcastToTenant(user.UserID.String(), payload)
+	}
 }
 
 // handleIncomingMessage processes a single incoming WhatsApp text message
@@ -250,8 +361,8 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			Username:         from,
 			Phone:            phoneFormatted,
 			Name:             senderName,
+			Platform:         "whatsapp",
 			PlatformChatID:   chatID,
-			PlatformUsername: from,
 			Sosmed: domains.JSONB{
 				"wa_id": from,
 				"name":  senderName,
@@ -297,6 +408,7 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			Role:     "user",
 			Type:     "text",
 			Message:  text,
+			Platform: "whatsapp",
 			IsHuman:  true,
 			IsActive: true,
 		}
@@ -541,7 +653,9 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient *helpers.WhatsAp
 		customerPhone := guest.Phone
 		if o.Customer != nil {
 			customerName = o.Customer.Name
-			customerPhone = o.Customer.PhoneCountryCode + o.Customer.PhoneNumber
+			if o.Customer.PhoneCountryCode != nil && o.Customer.PhoneNumber != nil {
+				customerPhone = *o.Customer.PhoneCountryCode + *o.Customer.PhoneNumber
+			}
 		}
 
 		msg := fmt.Sprintf("Store: %s\n\n", storeName)
@@ -645,6 +759,15 @@ func (cont *WhatsAppContImpl) waHandleAIMessage(waClient *helpers.WhatsAppClient
 			log.Printf("[Token] deducted %d tokens for tenant %s", n8nResp.UsageTokens, tenantID)
 		}
 
+		if strings.Contains(n8nResp.Reply, "__ACTION:SHOW_PRODUCTS__") {
+			freshGuest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
+			if err == nil && freshGuest != nil {
+				cont.waShowProducts(waClient, chatID, schema, freshGuest, clientID)
+				cont.setGuestState(schema, freshGuest, "browsing_products")
+			}
+			return
+		}
+
 		if strings.Contains(n8nResp.Reply, "__ACTION:CREATE_ORDER__") {
 			freshGuest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 			if err == nil && freshGuest != nil {
@@ -672,6 +795,7 @@ func (cont *WhatsAppContImpl) waHandleAIMessage(waClient *helpers.WhatsAppClient
 			Role:     "assistant",
 			Type:     "text",
 			Message:  n8nResp.Reply,
+			Platform: "whatsapp",
 			IsHuman:  false,
 			IsActive: true,
 		}
@@ -695,6 +819,7 @@ func (cont *WhatsAppContImpl) sendWABotMessage(waClient *helpers.WhatsAppClient,
 		Role:     "assistant",
 		Type:     "text",
 		Message:  message,
+		Platform: "whatsapp",
 		IsHuman:  false,
 		IsActive: true,
 	}
@@ -820,9 +945,17 @@ func (cont *WhatsAppContImpl) GetAIContextForSchema(ctx *gin.Context) {
 	})
 }
 
-// VerifyWebhookGlobal menangani verifikasi webhook Meta secara global (tanpa :schema).
-// Meta memanggil endpoint ini sekali saat pertama kali kita daftarkan webhook URL di App.
-// GET /api/v1/webhook/whatsapp
+// VerifyWebhookGlobal godoc
+// @Summary      Verify WhatsApp Webhook (Global)
+// @Description  Meta calls this endpoint once when registering the webhook URL in the Meta App Dashboard. Responds with hub.challenge to confirm ownership. No authentication required.
+// @Tags         WhatsApp Webhook
+// @Produce      plain
+// @Param        hub.mode          query  string  true  "Must be 'subscribe'"
+// @Param        hub.verify_token  query  string  true  "Must match META_VERIFY_TOKEN in server config"
+// @Param        hub.challenge     query  string  true  "Challenge string to echo back"
+// @Success      200
+// @Failure      403  {object}  helpers.ApiResponse
+// @Router       /webhook/whatsapp [get]
 func (cont *WhatsAppContImpl) VerifyWebhookGlobal(ctx *gin.Context) {
 	mode := ctx.Query("hub.mode")
 	token := ctx.Query("hub.verify_token")
@@ -849,9 +982,14 @@ func (cont *WhatsAppContImpl) VerifyWebhookGlobal(ctx *gin.Context) {
 	ctx.String(200, challenge)
 }
 
-// WebhookGlobal menangani semua pesan masuk WhatsApp dari Meta (satu endpoint untuk semua tenant).
-// Routing ke tenant yang benar dilakukan berdasarkan phone_number_id dari payload.
-// POST /api/v1/webhook/whatsapp
+// WebhookGlobal godoc
+// @Summary      Receive WhatsApp Webhook (Global)
+// @Description  Receives all incoming WhatsApp messages from Meta for all tenants. Routes each message to the correct tenant based on phone_number_id in the payload. No authentication required — called by Meta only.
+// @Tags         WhatsApp Webhook
+// @Accept       json
+// @Produce      json
+// @Success      200  {object}  helpers.ApiResponse
+// @Router       /webhook/whatsapp [post]
 func (cont *WhatsAppContImpl) WebhookGlobal(ctx *gin.Context) {
 	var payload WhatsAppWebhookPayload
 	if err := ctx.ShouldBindJSON(&payload); err != nil {
@@ -881,6 +1019,10 @@ func (cont *WhatsAppContImpl) WebhookGlobal(ctx *gin.Context) {
 			if err != nil || conn == nil {
 				log.Printf("[WhatsApp Global] tidak ada tenant untuk phone_number_id=%s", phoneNumberID)
 				continue
+			}
+
+			if len(change.Value.Statuses) > 0 {
+				cont.handleStatuses(conn.TenantSchema, change.Value.Statuses)
 			}
 
 			for _, msg := range change.Value.Messages {

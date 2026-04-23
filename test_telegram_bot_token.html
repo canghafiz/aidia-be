@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Telegram Bot Token</title>
+  <style>
+    body { font-family: monospace; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    input, textarea { width: 100%; padding: 8px; margin: 6px 0 14px; box-sizing: border-box; font-family: monospace; }
+    button { padding: 10px 24px; cursor: pointer; font-size: 14px; }
+    pre { background: #f4f4f4; padding: 14px; white-space: pre-wrap; word-break: break-all; border-left: 3px solid #ccc; }
+    .ok  { border-left-color: green; }
+    .err { border-left-color: red; }
+    label { font-weight: bold; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h2>Test: PATCH /telegram/bot-token</h2>
+
+  <label>Base URL</label>
+  <input id="baseUrl" value="https://data.ai-dia.com/api/v1" />
+
+  <label>Client ID</label>
+  <input id="clientId" placeholder="1893a372-f0e7-4b2e-bccd-99338c341c54" />
+
+  <label>JWT Token</label>
+  <input id="jwtToken" placeholder="eyJ..." />
+
+  <label>Bot Token</label>
+  <input id="botToken" placeholder="123456:ABC-DEF..." />
+
+  <button onclick="test()">Kirim PATCH</button>
+
+  <h3>Response:</h3>
+  <pre id="result">—</pre>
+
+  <script>
+    async function test() {
+      const baseUrl   = document.getElementById('baseUrl').value.trim();
+      const clientId  = document.getElementById('clientId').value.trim();
+      const jwtToken  = document.getElementById('jwtToken').value.trim();
+      const botToken  = document.getElementById('botToken').value.trim();
+      const result    = document.getElementById('result');
+
+      if (!clientId || !jwtToken || !botToken) {
+        result.textContent = 'Isi semua field dulu.';
+        result.className = 'err';
+        return;
+      }
+
+      const url = `${baseUrl}/client/${clientId}/telegram/bot-token`;
+      result.textContent = `Mengirim PATCH ke:\n${url}\n\n...`;
+      result.className = '';
+
+      try {
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwtToken}`,
+          },
+          body: JSON.stringify({ bot_token: botToken }),
+        });
+
+        const text = await res.text();
+        let body;
+        try { body = JSON.stringify(JSON.parse(text), null, 2); }
+        catch { body = text; }
+
+        result.textContent = `Status: ${res.status} ${res.statusText}\n\n${body}`;
+        result.className = res.ok ? 'ok' : 'err';
+      } catch (e) {
+        result.textContent = `Error: ${e.message}`;
+        result.className = 'err';
+      }
+    }
+  </script>
+</body>
+</html>

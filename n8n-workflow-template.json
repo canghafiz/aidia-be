@@ -1,0 +1,92 @@
+{
+  "name": "AI-Dia Simple Bot",
+  "nodes": [
+    {
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incoming-telegram",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "name": "Extract Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [400, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "message_text",
+              "value": "={{ $json.body.message.text }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Basic LLM Chain",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1,
+      "position": [550, 300],
+      "parameters": {
+        "prompt": "={{ $json.message_text }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "system",
+              "message": "Anda adalah asisten AI untuk restoran ini. Bantu customer dengan ramah dan natural."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [550, 480],
+      "parameters": {
+        "model": "gpt-4o-mini"
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "1",
+          "name": "AI-Dia OpenAI"
+        }
+      }
+    },
+    {
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [750, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $json.text } }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Extract Message", "type": "main", "index": 0 }]]
+    },
+    "Extract Message": {
+      "main": [[{ "node": "Basic LLM Chain", "type": "main", "index": 0 }]]
+    },
+    "Basic LLM Chain": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [{ "node": "Basic LLM Chain", "type": "ai_languageModel", "index": 0 }]
+      ]
+    }
+  },
+  "active": true
+}

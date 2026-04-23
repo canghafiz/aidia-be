@@ -224,8 +224,8 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 	if err != nil {
 		customer = &domains.Customer{
 			Name:             customerName,
-			PhoneCountryCode: phoneCountryCode,
-			PhoneNumber:      phoneNumber,
+			PhoneCountryCode: &phoneCountryCode,
+			PhoneNumber:      &phoneNumber,
 			AccountType:      "Telegram",
 		}
 		customer, err = cont.CustomerRepo.Create(tx, schema, *customer)
@@ -334,23 +334,24 @@ func (cont *TelegramContImpl) finalizeCreateOrder(tgClient *helpers.TelegramClie
 		tx.Table(schema+".order_payments").
 			Where("id = ?", existingPayment.ID).
 			Updates(map[string]interface{}{
-				"stripe_session_id":     stripeInvoiceID,
-				"stripe_session_url":    stripeInvoiceURL,
-				"stripe_payment_status": stripePaymentStatus,
-				"stripe_invoice_id":     stripeInvoiceID,
+				"payment_session_id":     stripeInvoiceID,
+				"payment_session_url":    stripeInvoiceURL,
+				"payment_gateway_status": stripePaymentStatus,
+				"payment_invoice_id":     stripeInvoiceID,
 			})
 		log.Printf("[Order] Updated existing order payment: ID=%s", existingPayment.ID)
 	} else {
 		orderPayment := &domains.OrderPayment{
-			OrderID:             order.ID,
-			PaymentStatus:       domains.PaymentStatusUnpaid,
-			PaymentMethod:       "stripe",
-			TotalPrice:          totalPrice,
-			ExpireAt:            order.CreatedAt.Add(15 * time.Minute),
-			StripeSessionID:     stripeInvoiceID,
-			StripeSessionURL:    stripeInvoiceURL,
-			StripePaymentStatus: &stripePaymentStatus,
-			StripeInvoiceID:     stripeInvoiceID,
+			OrderID:              order.ID,
+			PaymentStatus:        domains.PaymentStatusUnpaid,
+			PaymentMethod:        "stripe",
+			PaymentGateway:       "stripe",
+			TotalPrice:           totalPrice,
+			ExpireAt:             order.CreatedAt.Add(15 * time.Minute),
+			PaymentSessionID:     stripeInvoiceID,
+			PaymentSessionURL:    stripeInvoiceURL,
+			PaymentGatewayStatus: &stripePaymentStatus,
+			PaymentInvoiceID:     stripeInvoiceID,
 		}
 		_, err = cont.OrderPaymentRepo.Create(tx, schema, *orderPayment)
 		if err != nil {

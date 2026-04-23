@@ -121,14 +121,17 @@ func NewRouter(r Router) *Router {
 		// Payment
 		paymentGroup := generalGroup.Group("payments")
 		{
-			// Platform (tenant beli plan Aidia)
+			// Platform — tenant purchases a plan
 			platformGroup := paymentGroup.Group("platform")
 			{
-				// Webhook tanpa middleware — validasi lewat Stripe-Signature header
-				platformGroup.POST("/webhook", r.Dependency.PaymentCont.HandlePlatformWebhook)
+				// Webhooks — public, no auth (each gateway has its own signature scheme)
+				platformGroup.POST("/webhook/stripe", r.Dependency.PaymentCont.HandlePlatformWebhookStripe)
+				platformGroup.POST("/webhook/hitpay", r.Dependency.PaymentCont.HandlePlatformWebhookHitPay)
+				platformGroup.GET("/webhook/hitpay", func(c *gin.Context) { c.Status(200) }) // HitPay URL verification ping
 
 				platformAuth := platformGroup.Use(middleware)
 				{
+					platformAuth.GET("/gateways", r.Dependency.PaymentCont.GetAvailableGateways)
 					platformAuth.POST("/checkout/:plan_id", r.Dependency.PaymentCont.CreatePlatformCheckout)
 					platformAuth.POST("/invoices/:invoice_id/pay", r.Dependency.PaymentCont.CreatePaymentFromExisting)
 					platformAuth.GET("/invoices", r.Dependency.PaymentCont.GetPlatformInvoices)
@@ -136,11 +139,12 @@ func NewRouter(r Router) *Router {
 				}
 			}
 
-			// Client (customer bayar order tenant)
+			// Client — tenant receives payments from customers
 			clientGroup := paymentGroup.Group("client/:client_id")
 			{
-				// Webhook tanpa middleware — schema dari path param, validasi lewat Stripe-Signature header
-				clientGroup.POST("/webhook/:schema", r.Dependency.PaymentCont.HandleClientWebhook)
+				// Webhooks — public, no auth
+				clientGroup.POST("/webhook/stripe/:schema", r.Dependency.PaymentCont.HandleClientWebhookStripe)
+				clientGroup.POST("/webhook/hitpay/:schema", r.Dependency.PaymentCont.HandleClientWebhookHitPay)
 
 				clientAuth := clientGroup.Use(middleware)
 				{
@@ -202,8 +206,13 @@ func NewRouter(r Router) *Router {
 		customerGroup := generalGroup.Group("client/:client_id/customers").Use(middleware)
 		{
 			customerGroup.POST("", r.Dependency.CustomerCont.Create)
+			customerGroup.POST("/telegram", r.Dependency.CustomerCont.CreateTelegram)
+			customerGroup.POST("/whatsapp", r.Dependency.CustomerCont.CreateWhatsApp)
 			customerGroup.GET("", r.Dependency.CustomerCont.GetAll)
 			customerGroup.GET("/:customer_id", r.Dependency.CustomerCont.GetByID)
+			customerGroup.PATCH("/:customer_id", r.Dependency.CustomerCont.Update)
+			customerGroup.PUT("/:customer_id", r.Dependency.CustomerCont.Update)
+			customerGroup.POST("/:customer_id/telegram/chat", r.Dependency.ChatCont.InitTelegramChat)
 		}
 
 		// Order
@@ -260,6 +269,7 @@ func NewRouter(r Router) *Router {
 			{
 				chatWithAuth.PATCH("/:platform/:guest_id/read", r.Dependency.ChatCont.MarkAsRead)
 				chatWithAuth.POST("/:platform/:guest_id/messages", r.Dependency.ChatCont.SendManualReply)
+				chatWithAuth.POST("/:platform/:guest_id/messages/template", r.Dependency.ChatCont.SendTemplateMessage)
 			}
 		}
 
@@ -276,7 +286,10 @@ func NewRouter(r Router) *Router {
 			integrationGroup.PATCH("/:sub_group_name", r.Dependency.SettingCont.UpdateClientIntegration)
 		}
 
-		// WhatsApp Embedded Signup (butuh auth)
+		// WhatsApp Embedded Signup — public config endpoint (no auth)
+		generalGroup.GET("whatsapp/config", r.Dependency.WhatsAppOAuthCont.GetConfig)
+
+		// WhatsApp connection (butuh auth)
 		whatsappOAuthGroup := generalGroup.Group("client/:client_id/whatsapp").Use(middleware)
 		{
 			whatsappOAuthGroup.POST("/connect", r.Dependency.WhatsAppOAuthCont.Connect)
@@ -290,21 +303,15 @@ func NewRouter(r Router) *Router {
 			telegramWebhookGroup.POST("/:schema", r.Dependency.TelegramCont.Webhook)
 		}
 
-		// WhatsApp Webhook — Global (Embedded Signup, satu URL untuk semua tenant)
+		// WhatsApp Webhook — Global (satu URL untuk semua tenant)
 		// GET = verifikasi Meta, POST = pesan masuk (routing via phone_number_id)
 		whatsappWebhookGroup := generalGroup.Group("webhook/whatsapp")
 		{
 			whatsappWebhookGroup.GET("", r.Dependency.WhatsAppCont.VerifyWebhookGlobal)
 			whatsappWebhookGroup.POST("", r.Dependency.WhatsAppCont.WebhookGlobal)
-			// Legacy per-tenant routes (untuk tenant yang masih pakai manual token)
+			// Legacy per-tenant routes
 			whatsappWebhookGroup.GET("/:schema", r.Dependency.WhatsAppCont.VerifyWebhook)
 			whatsappWebhookGroup.POST("/:schema", r.Dependency.WhatsAppCont.Webhook)
-		}
-
-		// Stripe Webhook for Client Payments (public - no middleware)
-		paymentWebhookGroup := generalGroup.Group("payments/client/webhook")
-		{
-			paymentWebhookGroup.POST("/:schema", r.Dependency.PaymentCont.HandleClientWebhook)
 		}
 
 		// Internal API for n8n (no auth, can add internal API key middleware later)

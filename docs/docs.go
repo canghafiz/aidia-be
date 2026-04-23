@@ -806,14 +806,16 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
+            }
+        },
+        "/client/{client_id}/customers/telegram": {
             "post": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat customer baru. Jika nomor HP sudah terdaftar, kembalikan data customer yang ada.",
+                "description": "Buat customer baru via Telegram. Memvalidasi username ke Telegram API. Jika sudah terdaftar, kembalikan data yang ada.",
                 "consumes": [
                     "application/json"
                 ],
@@ -832,12 +834,81 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Create Customer Request",
+                        "description": "Create Telegram Customer Request",
                         "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/customer.CreateCustomerRequest"
+                            "$ref": "#/definitions/customer.CreateTelegramCustomerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/customer.Response"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/customers/whatsapp": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Buat customer baru via WhatsApp. Memvalidasi nomor ke WhatsApp API. Jika sudah terdaftar, kembalikan data yang ada.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Customer"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Create WhatsApp Customer Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/customer.CreateWhatsAppCustomerRequest"
                         }
                     }
                 ],
@@ -938,6 +1009,59 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/customers/{customer_id}/telegram/chat": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a Telegram deep link (t.me/Bot?start=cust_{id}) to share with the customer. Once the customer clicks it and starts the bot, this endpoint is blocked for that customer.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Chat"
+                ],
+                "summary": "Get Telegram start link for a registered customer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID (UUID)",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Customer ID",
+                        "name": "customer_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -3388,9 +3512,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/payments/client/webhook/{schema}": {
+        "/client/{client_id}/whatsapp/connect": {
             "post": {
-                "description": "[BELUM DIGUNAKAN] Endpoint untuk menerima event webhook dari Stripe per tenant. Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.",
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Connect tenant's WhatsApp Business account via Meta Embedded Signup. Frontend sends code + waba_id dari Embedded Signup callback, backend tukar code dengan access token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3398,22 +3527,25 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Payment Client"
+                    "WhatsApp"
                 ],
+                "summary": "Connect WhatsApp Business Account",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Tenant Schema",
-                        "name": "schema",
+                        "description": "Client ID",
+                        "name": "client_id",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "type": "string",
-                        "description": "Stripe Webhook Signature",
-                        "name": "Stripe-Signature",
-                        "in": "header",
-                        "required": true
+                        "description": "code dan waba_id dari Embedded Signup",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/impl.connectWhatsAppRequest"
+                        }
                     }
                 ],
                 "responses": {
@@ -3429,8 +3561,100 @@ const docTemplate = `{
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/whatsapp/disconnect": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Disconnect the tenant's WhatsApp Business account and clear stored credentials.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp"
+                ],
+                "summary": "Disconnect WhatsApp Business Account",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/whatsapp/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Check whether the tenant's WhatsApp Business account is connected. Returns phone number and display name if connected.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp"
+                ],
+                "summary": "Get WhatsApp Connection Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -3577,6 +3801,147 @@ const docTemplate = `{
                 }
             }
         },
+        "/payments/client/{client_id}/webhook/hitpay/{schema}": {
+            "post": {
+                "description": "Receives HitPay webhook events for a specific tenant's order payments (status: completed / failed). No authentication required — validated via HMAC-SHA256 in the form body.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment Client"
+                ],
+                "summary": "Handle Client HitPay Webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant Schema",
+                        "name": "schema",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "HitPay Payment ID",
+                        "name": "payment_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "HitPay Payment Request ID",
+                        "name": "payment_request_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment status (completed / failed)",
+                        "name": "status",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Reference number",
+                        "name": "reference_number",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment amount",
+                        "name": "amount",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Currency",
+                        "name": "currency",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "HMAC-SHA256 signature",
+                        "name": "hmac",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/payments/client/{client_id}/webhook/stripe/{schema}": {
+            "post": {
+                "description": "Receives Stripe webhook events for a specific tenant's order payments (invoice.paid / invoice.payment_failed). No authentication required — validated via Stripe-Signature header.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment Client"
+                ],
+                "summary": "Handle Client Stripe Webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant Schema",
+                        "name": "schema",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stripe Webhook Signature",
+                        "name": "Stripe-Signature",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/payments/platform/checkout/{plan_id}": {
             "post": {
                 "security": [
@@ -3584,7 +3949,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat sesi pembayaran Stripe untuk pembelian plan (platform Aidia), mengembalikan session URL untuk redirect ke halaman pembayaran Stripe",
+                "description": "Buat sesi pembayaran untuk pembelian plan (platform Aidia). Gunakan query param ` + "`" + `gateway` + "`" + ` untuk memilih gateway (stripe / hitpay). Jika kosong, pakai gateway default dari konfigurasi.",
                 "produces": [
                     "application/json"
                 ],
@@ -3598,6 +3963,12 @@ const docTemplate = `{
                         "name": "plan_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment gateway: stripe | hitpay (default: active gateway)",
+                        "name": "gateway",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3633,6 +4004,52 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/payments/platform/gateways": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns a list of payment gateways that are configured and available for platform checkout (e.g. stripe, hitpay)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment Platform"
+                ],
+                "summary": "Get Available Payment Gateways",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/helpers.ApiResponse"
                         }
@@ -3772,7 +4189,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat ulang sesi pembayaran Stripe untuk invoice yang belum dibayar, digunakan jika sesi sebelumnya expired",
+                "description": "Buat ulang sesi pembayaran untuk invoice yang belum dibayar. Gunakan query param ` + "`" + `gateway` + "`" + ` untuk memilih gateway (stripe / hitpay).",
                 "produces": [
                     "application/json"
                 ],
@@ -3786,6 +4203,12 @@ const docTemplate = `{
                         "name": "invoice_id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment gateway: stripe | hitpay (default: active gateway)",
+                        "name": "gateway",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3828,9 +4251,92 @@ const docTemplate = `{
                 }
             }
         },
-        "/payments/platform/webhook": {
+        "/payments/platform/webhook/hitpay": {
             "post": {
-                "description": "Endpoint untuk menerima event webhook dari Stripe platform Aidia (invoice.paid / invoice.payment_failed), tidak memerlukan autentikasi (TIDAK DIPAKAI KARENA INI UNTUK WEBHOOK SAJA)",
+                "description": "Receives HitPay webhook events for Aidia platform payments (status: completed / failed). No authentication required — validated via HMAC-SHA256 in the form body.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Payment Platform"
+                ],
+                "summary": "Handle Platform HitPay Webhook",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "HitPay Payment ID",
+                        "name": "payment_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "HitPay Payment Request ID",
+                        "name": "payment_request_id",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment status (completed / failed)",
+                        "name": "status",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Reference number (invoice number)",
+                        "name": "reference_number",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment amount",
+                        "name": "amount",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Currency",
+                        "name": "currency",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "string",
+                        "description": "HMAC-SHA256 signature",
+                        "name": "hmac",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/payments/platform/webhook/stripe": {
+            "post": {
+                "description": "Receives Stripe webhook events for Aidia platform payments (invoice.paid / invoice.payment_failed). No authentication required — validated via Stripe-Signature header.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3840,6 +4346,7 @@ const docTemplate = `{
                 "tags": [
                     "Payment Platform"
                 ],
+                "summary": "Handle Platform Stripe Webhook",
                 "parameters": [
                     {
                         "type": "string",
@@ -4985,6 +5492,139 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/webhook/whatsapp": {
+            "get": {
+                "description": "Meta calls this endpoint once when registering the webhook URL in the Meta App Dashboard. Responds with hub.challenge to confirm ownership. No authentication required.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "WhatsApp Webhook"
+                ],
+                "summary": "Verify WhatsApp Webhook (Global)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Must be 'subscribe'",
+                        "name": "hub.mode",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Must match META_VERIFY_TOKEN in server config",
+                        "name": "hub.verify_token",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Challenge string to echo back",
+                        "name": "hub.challenge",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Receives all incoming WhatsApp messages from Meta for all tenants. Routes each message to the correct tenant based on phone_number_id in the payload. No authentication required — called by Meta only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp Webhook"
+                ],
+                "summary": "Receive WhatsApp Webhook (Global)",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/config": {
+            "get": {
+                "description": "Return public Meta config needed by frontend to init FB SDK for Embedded Signup.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp"
+                ],
+                "summary": "Get WhatsApp OAuth URL",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/whatsapp/connect-with-session": {
+            "post": {
+                "description": "Used after OAuth callback when WABA is not found automatically. Client submits session token (from ?session= URL param) + WABA ID manually.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp"
+                ],
+                "summary": "Connect WhatsApp using OAuth session token",
+                "parameters": [
+                    {
+                        "description": "Session token and WABA ID",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/impl.connectWithSessionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -5000,19 +5640,31 @@ const docTemplate = `{
                 }
             }
         },
-        "customer.CreateCustomerRequest": {
+        "customer.CreateTelegramCustomerRequest": {
             "type": "object",
             "required": [
-                "account_type",
+                "name",
+                "username"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "maxLength": 150
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 100
+                }
+            }
+        },
+        "customer.CreateWhatsAppCustomerRequest": {
+            "type": "object",
+            "required": [
                 "name",
                 "phone_country_code",
                 "phone_number"
             ],
             "properties": {
-                "account_type": {
-                    "type": "string",
-                    "maxLength": 20
-                },
                 "name": {
                     "type": "string",
                     "maxLength": 150
@@ -5049,6 +5701,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated_at": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
@@ -5542,6 +6197,45 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "impl.connectWhatsAppRequest": {
+            "type": "object",
+            "required": [
+                "code",
+                "waba_id"
+            ],
+            "properties": {
+                "code": {
+                    "description": "dari Embedded Signup callback",
+                    "type": "string"
+                },
+                "phone_number_id": {
+                    "description": "dari message event, opsional",
+                    "type": "string"
+                },
+                "waba_id": {
+                    "description": "dari message event WA_EMBEDDED_SIGNUP",
+                    "type": "string"
+                }
+            }
+        },
+        "impl.connectWithSessionRequest": {
+            "type": "object",
+            "required": [
+                "session_token",
+                "waba_id"
+            ],
+            "properties": {
+                "phone_number_id": {
+                    "type": "string"
+                },
+                "session_token": {
+                    "type": "string"
+                },
+                "waba_id": {
                     "type": "string"
                 }
             }
@@ -6759,7 +7453,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "data.ai-dia.com",
+	Host:             "localhost:8005",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "AI-Dia API",

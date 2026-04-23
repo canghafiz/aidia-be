@@ -23,10 +23,11 @@ type OrderPayment struct {
 	PaymentMethod       string     `gorm:"column:payment_method;not null;default:'stripe'"`
 	TotalPrice          float64    `gorm:"column:total_price;not null;default:0"`
 	ExpireAt            time.Time  `gorm:"column:expire_at;not null"`
-	StripeSessionID     *string    `gorm:"column:stripe_session_id"`
-	StripeSessionURL    *string    `gorm:"column:stripe_session_url"`
-	StripePaymentStatus *string    `gorm:"column:stripe_payment_status"`
-	StripeInvoiceID     *string    `gorm:"column:stripe_invoice_id"`
+	PaymentGateway       string  `gorm:"column:payment_gateway;not null;default:'stripe'"`
+	PaymentSessionID    *string `gorm:"column:payment_session_id"`
+	PaymentSessionURL   *string `gorm:"column:payment_session_url"`
+	PaymentGatewayStatus *string `gorm:"column:payment_gateway_status"`
+	PaymentInvoiceID    *string `gorm:"column:payment_invoice_id"`
 	PaidAt              *time.Time `gorm:"column:paid_at"`
 	IsPaid              bool       `gorm:"column:is_paid;not null;default:false"`
 	CreatedAt           time.Time  `gorm:"column:created_at;autoCreateTime"`

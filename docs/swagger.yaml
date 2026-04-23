@@ -8,11 +8,20 @@ definitions:
     required:
     - message
     type: object
-  customer.CreateCustomerRequest:
+  customer.CreateTelegramCustomerRequest:
     properties:
-      account_type:
-        maxLength: 20
+      name:
+        maxLength: 150
         type: string
+      username:
+        maxLength: 100
+        type: string
+    required:
+    - name
+    - username
+    type: object
+  customer.CreateWhatsAppCustomerRequest:
+    properties:
       name:
         maxLength: 150
         type: string
@@ -23,7 +32,6 @@ definitions:
         maxLength: 20
         type: string
     required:
-    - account_type
     - name
     - phone_country_code
     - phone_number
@@ -43,6 +51,8 @@ definitions:
       phone_number:
         type: string
       updated_at:
+        type: string
+      username:
         type: string
     type: object
   delivery.CreateDeliverySettingRequest:
@@ -370,6 +380,33 @@ definitions:
         type: string
       username:
         type: string
+    type: object
+  impl.connectWhatsAppRequest:
+    properties:
+      code:
+        description: dari Embedded Signup callback
+        type: string
+      phone_number_id:
+        description: dari message event, opsional
+        type: string
+      waba_id:
+        description: dari message event WA_EMBEDDED_SIGNUP
+        type: string
+    required:
+    - code
+    - waba_id
+    type: object
+  impl.connectWithSessionRequest:
+    properties:
+      phone_number_id:
+        type: string
+      session_token:
+        type: string
+      waba_id:
+        type: string
+    required:
+    - session_token
+    - waba_id
     type: object
   kitchen_order.CustomerResponse:
     properties:
@@ -1190,7 +1227,7 @@ definitions:
         minLength: 3
         type: string
     type: object
-host: data.ai-dia.com
+host: localhost:8005
 info:
   contact: {}
   description: REST API for AI-Dia application
@@ -1703,47 +1740,6 @@ paths:
       - BearerAuth: []
       tags:
       - Customer
-    post:
-      consumes:
-      - application/json
-      description: Buat customer baru. Jika nomor HP sudah terdaftar, kembalikan data
-        customer yang ada.
-      parameters:
-      - description: Client ID
-        in: path
-        name: client_id
-        required: true
-        type: string
-      - description: Create Customer Request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/customer.CreateCustomerRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            allOf:
-            - $ref: '#/definitions/helpers.ApiResponse'
-            - properties:
-                data:
-                  $ref: '#/definitions/customer.Response'
-              type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/helpers.ApiResponse'
-      security:
-      - BearerAuth: []
-      tags:
-      - Customer
   /client/{client_id}/customers/{customer_id}:
     get:
       description: Ambil detail customer berdasarkan ID
@@ -1776,6 +1772,126 @@ paths:
             $ref: '#/definitions/helpers.ApiResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Customer
+  /client/{client_id}/customers/{customer_id}/telegram/chat:
+    post:
+      description: Returns a Telegram deep link (t.me/Bot?start=cust_{id}) to share
+        with the customer. Once the customer clicks it and starts the bot, this endpoint
+        is blocked for that customer.
+      parameters:
+      - description: Client ID (UUID)
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Customer ID
+        in: path
+        name: customer_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Telegram start link for a registered customer
+      tags:
+      - Chat
+  /client/{client_id}/customers/telegram:
+    post:
+      consumes:
+      - application/json
+      description: Buat customer baru via Telegram. Memvalidasi username ke Telegram
+        API. Jika sudah terdaftar, kembalikan data yang ada.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create Telegram Customer Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/customer.CreateTelegramCustomerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/customer.Response'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      tags:
+      - Customer
+  /client/{client_id}/customers/whatsapp:
+    post:
+      consumes:
+      - application/json
+      description: Buat customer baru via WhatsApp. Memvalidasi nomor ke WhatsApp
+        API. Jika sudah terdaftar, kembalikan data yang ada.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Create WhatsApp Customer Request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/customer.CreateWhatsAppCustomerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/customer.Response'
+              type: object
+        "400":
+          description: Bad Request
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
         "500":
@@ -3326,6 +3442,105 @@ paths:
       summary: Update Telegram Bot Token
       tags:
       - Settings
+  /client/{client_id}/whatsapp/connect:
+    post:
+      consumes:
+      - application/json
+      description: Connect tenant's WhatsApp Business account via Meta Embedded Signup.
+        Frontend sends code + waba_id dari Embedded Signup callback, backend tukar
+        code dengan access token.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: code dan waba_id dari Embedded Signup
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/impl.connectWhatsAppRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Connect WhatsApp Business Account
+      tags:
+      - WhatsApp
+  /client/{client_id}/whatsapp/disconnect:
+    delete:
+      description: Disconnect the tenant's WhatsApp Business account and clear stored
+        credentials.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Disconnect WhatsApp Business Account
+      tags:
+      - WhatsApp
+  /client/{client_id}/whatsapp/status:
+    get:
+      description: Check whether the tenant's WhatsApp Business account is connected.
+        Returns phone number and display name if connected.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get WhatsApp Connection Status
+      tags:
+      - WhatsApp
   /payments/client/{client_id}/checkout/{order_id}:
     post:
       description: '[BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik
@@ -3413,13 +3628,76 @@ paths:
       - BearerAuth: []
       tags:
       - Payment Client
-  /payments/client/webhook/{schema}:
+  /payments/client/{client_id}/webhook/hitpay/{schema}:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: 'Receives HitPay webhook events for a specific tenant''s order
+        payments (status: completed / failed). No authentication required — validated
+        via HMAC-SHA256 in the form body.'
+      parameters:
+      - description: Tenant Schema
+        in: path
+        name: schema
+        required: true
+        type: string
+      - description: HitPay Payment ID
+        in: formData
+        name: payment_id
+        required: true
+        type: string
+      - description: HitPay Payment Request ID
+        in: formData
+        name: payment_request_id
+        required: true
+        type: string
+      - description: Payment status (completed / failed)
+        in: formData
+        name: status
+        required: true
+        type: string
+      - description: Reference number
+        in: formData
+        name: reference_number
+        type: string
+      - description: Payment amount
+        in: formData
+        name: amount
+        type: string
+      - description: Currency
+        in: formData
+        name: currency
+        type: string
+      - description: HMAC-SHA256 signature
+        in: formData
+        name: hmac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Handle Client HitPay Webhook
+      tags:
+      - Payment Client
+  /payments/client/{client_id}/webhook/stripe/{schema}:
     post:
       consumes:
       - application/json
-      description: '[BELUM DIGUNAKAN] Endpoint untuk menerima event webhook dari Stripe
-        per tenant. Endpoint ini belum aktif digunakan karena fitur pembayaran order
-        tenant masih dalam pengembangan.'
+      description: Receives Stripe webhook events for a specific tenant's order payments
+        (invoice.paid / invoice.payment_failed). No authentication required — validated
+        via Stripe-Signature header.
       parameters:
       - description: Tenant Schema
         in: path
@@ -3446,17 +3724,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
+      summary: Handle Client Stripe Webhook
       tags:
       - Payment Client
   /payments/platform/checkout/{plan_id}:
     post:
-      description: Buat sesi pembayaran Stripe untuk pembelian plan (platform Aidia),
-        mengembalikan session URL untuk redirect ke halaman pembayaran Stripe
+      description: Buat sesi pembayaran untuk pembelian plan (platform Aidia). Gunakan
+        query param `gateway` untuk memilih gateway (stripe / hitpay). Jika kosong,
+        pakai gateway default dari konfigurasi.
       parameters:
       - description: Plan ID
         in: path
         name: plan_id
         required: true
+        type: string
+      - description: 'Payment gateway: stripe | hitpay (default: active gateway)'
+        in: query
+        name: gateway
         type: string
       produces:
       - application/json
@@ -3484,6 +3768,33 @@ paths:
             $ref: '#/definitions/helpers.ApiResponse'
       security:
       - BearerAuth: []
+      tags:
+      - Payment Platform
+  /payments/platform/gateways:
+    get:
+      description: Returns a list of payment gateways that are configured and available
+        for platform checkout (e.g. stripe, hitpay)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/helpers.ApiResponse'
+            - properties:
+                data:
+                  items:
+                    type: string
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      security:
+      - BearerAuth: []
+      summary: Get Available Payment Gateways
       tags:
       - Payment Platform
   /payments/platform/invoices:
@@ -3562,13 +3873,17 @@ paths:
       - Payment Platform
   /payments/platform/invoices/{invoice_id}/pay:
     post:
-      description: Buat ulang sesi pembayaran Stripe untuk invoice yang belum dibayar,
-        digunakan jika sesi sebelumnya expired
+      description: Buat ulang sesi pembayaran untuk invoice yang belum dibayar. Gunakan
+        query param `gateway` untuk memilih gateway (stripe / hitpay).
       parameters:
       - description: Invoice ID
         in: path
         name: invoice_id
         required: true
+        type: string
+      - description: 'Payment gateway: stripe | hitpay (default: active gateway)'
+        in: query
+        name: gateway
         type: string
       produces:
       - application/json
@@ -3598,13 +3913,71 @@ paths:
       - BearerAuth: []
       tags:
       - Payment Platform
-  /payments/platform/webhook:
+  /payments/platform/webhook/hitpay:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: 'Receives HitPay webhook events for Aidia platform payments (status:
+        completed / failed). No authentication required — validated via HMAC-SHA256
+        in the form body.'
+      parameters:
+      - description: HitPay Payment ID
+        in: formData
+        name: payment_id
+        required: true
+        type: string
+      - description: HitPay Payment Request ID
+        in: formData
+        name: payment_request_id
+        required: true
+        type: string
+      - description: Payment status (completed / failed)
+        in: formData
+        name: status
+        required: true
+        type: string
+      - description: Reference number (invoice number)
+        in: formData
+        name: reference_number
+        type: string
+      - description: Payment amount
+        in: formData
+        name: amount
+        type: string
+      - description: Currency
+        in: formData
+        name: currency
+        type: string
+      - description: HMAC-SHA256 signature
+        in: formData
+        name: hmac
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Handle Platform HitPay Webhook
+      tags:
+      - Payment Platform
+  /payments/platform/webhook/stripe:
     post:
       consumes:
       - application/json
-      description: Endpoint untuk menerima event webhook dari Stripe platform Aidia
-        (invoice.paid / invoice.payment_failed), tidak memerlukan autentikasi (TIDAK
-        DIPAKAI KARENA INI UNTUK WEBHOOK SAJA)
+      description: Receives Stripe webhook events for Aidia platform payments (invoice.paid
+        / invoice.payment_failed). No authentication required — validated via Stripe-Signature
+        header.
       parameters:
       - description: Stripe Webhook Signature
         in: header
@@ -3626,6 +3999,7 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/helpers.ApiResponse'
+      summary: Handle Platform Stripe Webhook
       tags:
       - Payment Platform
   /plans:
@@ -4326,6 +4700,100 @@ paths:
       - BearerAuth: []
       tags:
       - Users
+  /webhook/whatsapp:
+    get:
+      description: Meta calls this endpoint once when registering the webhook URL
+        in the Meta App Dashboard. Responds with hub.challenge to confirm ownership.
+        No authentication required.
+      parameters:
+      - description: Must be 'subscribe'
+        in: query
+        name: hub.mode
+        required: true
+        type: string
+      - description: Must match META_VERIFY_TOKEN in server config
+        in: query
+        name: hub.verify_token
+        required: true
+        type: string
+      - description: Challenge string to echo back
+        in: query
+        name: hub.challenge
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Verify WhatsApp Webhook (Global)
+      tags:
+      - WhatsApp Webhook
+    post:
+      consumes:
+      - application/json
+      description: Receives all incoming WhatsApp messages from Meta for all tenants.
+        Routes each message to the correct tenant based on phone_number_id in the
+        payload. No authentication required — called by Meta only.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Receive WhatsApp Webhook (Global)
+      tags:
+      - WhatsApp Webhook
+  /whatsapp/config:
+    get:
+      description: Return public Meta config needed by frontend to init FB SDK for
+        Embedded Signup.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Get WhatsApp OAuth URL
+      tags:
+      - WhatsApp
+  /whatsapp/connect-with-session:
+    post:
+      consumes:
+      - application/json
+      description: Used after OAuth callback when WABA is not found automatically.
+        Client submits session token (from ?session= URL param) + WABA ID manually.
+      parameters:
+      - description: Session token and WABA ID
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/impl.connectWithSessionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/helpers.ApiResponse'
+      summary: Connect WhatsApp using OAuth session token
+      tags:
+      - WhatsApp
 securityDefinitions:
   BearerAuth:
     description: 'Format: "Bearer {token}" — paste token dari login response, accessToken'

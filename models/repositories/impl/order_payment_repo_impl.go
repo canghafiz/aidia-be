@@ -65,10 +65,10 @@ func (repo *OrderPaymentRepoImpl) GetByOrderID(db *gorm.DB, schema string, order
 	return &payment, nil
 }
 
-func (repo *OrderPaymentRepoImpl) GetByStripeInvoiceID(db *gorm.DB, schema, invoiceID string) (*domains.OrderPayment, error) {
+func (repo *OrderPaymentRepoImpl) GetByPaymentInvoiceID(db *gorm.DB, schema, invoiceID string) (*domains.OrderPayment, error) {
 	var payment domains.OrderPayment
 	if err := db.Raw(`
-		SELECT * FROM `+schema+`.order_payments WHERE stripe_invoice_id = ?`, invoiceID).
+		SELECT * FROM `+schema+`.order_payments WHERE payment_invoice_id = ?`, invoiceID).
 		Scan(&payment).Error; err != nil {
 		return nil, err
 	}

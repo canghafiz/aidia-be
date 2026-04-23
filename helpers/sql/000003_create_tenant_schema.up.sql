@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS :schema_name.guest (
     is_take_over          BOOLEAN      NOT NULL DEFAULT FALSE,
     is_read               BOOLEAN      NOT NULL DEFAULT FALSE,
     is_active             BOOLEAN      NOT NULL DEFAULT TRUE,
+    platform              VARCHAR(30),
     platform_chat_id      VARCHAR(100),
-    platform_username     VARCHAR(100),
     last_message_at       TIMESTAMPTZ,
     conversation_state    JSONB DEFAULT '{}'::jsonb,
     created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -33,6 +33,7 @@ CREATE INDEX idx_guest_active_read ON :schema_name.guest (is_active, is_read);
 CREATE INDEX idx_guest_ai_thread_id ON :schema_name.guest (ai_thread_id);
 CREATE INDEX idx_guest_created_at ON :schema_name.guest (created_at);
 CREATE INDEX idx_guest_platform_chat ON :schema_name.guest (platform_chat_id);
+CREATE INDEX idx_guest_platform ON :schema_name.guest (platform);
 CREATE INDEX idx_guest_last_message ON :schema_name.guest (last_message_at);
 CREATE INDEX idx_guest_tenant ON :schema_name.guest (tenant_id);
 
@@ -142,16 +143,18 @@ CREATE TYPE :schema_name.customer_account AS ENUM (
                                               );
 
 CREATE TABLE IF NOT EXISTS :schema_name.customer (
-                                                     id                 SERIAL       PRIMARY KEY,
-                                                     name               VARCHAR(150) NOT NULL,
-    phone_country_code VARCHAR(5)   NOT NULL,
-    phone_number       VARCHAR(20)  NOT NULL,
+    id                 SERIAL       PRIMARY KEY,
+    name               VARCHAR(150) NOT NULL,
+    username           VARCHAR(100) NULL,
+    phone_country_code VARCHAR(5)   NULL,
+    phone_number       VARCHAR(20)  NULL,
     account_type       :schema_name.customer_account  NOT NULL DEFAULT 'Telegram',
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-    );
+);
 
 CREATE INDEX idx_customer_phone ON :schema_name.customer (phone_country_code, phone_number);
+CREATE INDEX idx_customer_username ON :schema_name.customer (username);
 
 -- ============================================================
 -- Orders
@@ -228,10 +231,11 @@ CREATE TABLE IF NOT EXISTS :schema_name.order_payments (
     payment_method VARCHAR(50)                 NOT NULL DEFAULT 'stripe',
     total_price    NUMERIC(15,2)               NOT NULL DEFAULT 0,
     expire_at      TIMESTAMPTZ                 NOT NULL DEFAULT NOW() + INTERVAL '15 minutes',
-    stripe_session_id VARCHAR(255),
-    stripe_session_url TEXT,
-    stripe_payment_status VARCHAR(50),
-    stripe_invoice_id VARCHAR(255),
+    payment_gateway       VARCHAR(50)  NOT NULL DEFAULT 'stripe',
+    payment_session_id    VARCHAR(255),
+    payment_session_url   TEXT,
+    payment_gateway_status VARCHAR(50),
+    payment_invoice_id    VARCHAR(255),
     paid_at        TIMESTAMPTZ,
     is_paid        BOOLEAN                     NOT NULL DEFAULT FALSE,
     created_at     TIMESTAMPTZ                 NOT NULL DEFAULT NOW(),
@@ -283,9 +287,11 @@ WHERE group_name = 'notification'
 ON CONFLICT (sub_group_name, name) DO NOTHING;
 
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
-    ('integration', 'Stripe Client', 'stripe-client-secret-key', '{stripe-client-secret-key}'),
-    ('integration', 'Stripe Client', 'stripe-client-public-key', '{stripe-client-public-key}'),
-    ('integration', 'Stripe Client', 'stripe-client-webhook-secret', '{stripe-client-webhook-secret}');
+    ('integration', 'Stripe Client', 'stripe-client-secret-key',      '{stripe-client-secret-key}'),
+    ('integration', 'Stripe Client', 'stripe-client-public-key',      '{stripe-client-public-key}'),
+    ('integration', 'Stripe Client', 'stripe-client-webhook-secret',  '{stripe-client-webhook-secret}'),
+    ('integration', 'HitPay Client', 'hitpay-client-api-key',         ''),
+    ('integration', 'HitPay Client', 'hitpay-client-webhook-salt',    '');
 
 -- AI Prompt settings (per section)
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES

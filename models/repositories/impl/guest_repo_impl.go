@@ -3,6 +3,7 @@ package impl
 import (
 	"backend/models/domains"
 	"backend/models/repositories"
+	"strings"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -38,17 +39,27 @@ func (repo *GuestRepoImpl) FindByPlatformChatID(db *gorm.DB, schema, chatID stri
 	return &guest, nil
 }
 
+func (repo *GuestRepoImpl) FindByUsername(db *gorm.DB, schema, username string) (*domains.Guest, error) {
+	var guest domains.Guest
+	err := db.Table(schema+"."+guest.TableName()).
+		Where("username = ?", username).
+		First(&guest).Error
+	if err != nil {
+		return nil, err
+	}
+	return &guest, nil
+}
+
 func (repo *GuestRepoImpl) FindAllByTenantID(db *gorm.DB, schema string, tenantID uuid.UUID, platform string, pagination domains.Pagination) ([]domains.Guest, int64, error) {
 	var guests []domains.Guest
 	var total int64
 
 	table := schema + ".guest"
-	msgTable := schema + ".guest_message"
 
 	baseQ := func() *gorm.DB {
 		q := db.Table(table).Where("tenant_id = ?", tenantID)
 		if platform != "" {
-			q = q.Where("id IN (SELECT DISTINCT guest_id FROM "+msgTable+" WHERE platform = ?)", platform)
+			q = q.Where("LOWER(TRIM(platform)) = ?", strings.ToLower(strings.TrimSpace(platform)))
 		}
 		return q
 	}

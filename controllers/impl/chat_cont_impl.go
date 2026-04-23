@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -337,8 +338,12 @@ func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 	}
 
 	if err := cont.ChatServ.SendManualReply(accessToken, clientID, guestID, req.Message, platform); err != nil {
-		if err.Error() == "whatsapp_coming_soon" {
-			ctx.AbortWithStatusJSON(400, gin.H{"error": "WhatsApp integration coming soon. Stay tuned!"})
+		if err.Error() == "recipient number is not registered on WhatsApp" {
+			ctx.AbortWithStatusJSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		if err.Error() == "whatsapp business phone number is connected but not registered yet" {
+			ctx.AbortWithStatusJSON(400, gin.H{"error": err.Error()})
 			return
 		}
 		ctx.AbortWithStatusJSON(500, gin.H{"error": err.Error()})
@@ -346,4 +351,75 @@ func (cont *ChatContImpl) SendManualReply(ctx *gin.Context) {
 	}
 
 	ctx.JSON(200, gin.H{"success": true, "message": "Message sent"})
+}
+
+func (cont *ChatContImpl) SendTemplateMessage(ctx *gin.Context) {
+	accessToken := helpers.GetJwtToken(ctx)
+
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
+		return
+	}
+
+	platform := ctx.Param("platform")
+	if strings.ToLower(strings.TrimSpace(platform)) != "whatsapp" {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "template messages are only supported for whatsapp"})
+		return
+	}
+
+	guestID, err := helpers.ParseUUID(ctx, "guest_id")
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid guest_id"})
+		return
+	}
+
+	var req chatreq.SendTemplateMessageRequest
+	if err := ctx.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.TemplateName) == "" {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "template_name is required"})
+		return
+	}
+
+	if err := cont.ChatServ.SendTemplateMessage(accessToken, clientID, guestID, req.TemplateName, req.LanguageCode, req.BodyParams); err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, gin.H{"success": true, "message": "Template message sent"})
+}
+
+// InitTelegramChat godoc
+// @Summary      Get Telegram start link for a registered customer
+// @Description  Returns a Telegram deep link (t.me/Bot?start=cust_{id}) to share with the customer. Once the customer clicks it and starts the bot, this endpoint is blocked for that customer.
+// @Tags         Chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id    path  string  true  "Client ID (UUID)"
+// @Param        customer_id  path  int     true  "Customer ID"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/customers/{customer_id}/telegram/chat [post]
+func (cont *ChatContImpl) InitTelegramChat(ctx *gin.Context) {
+	accessToken := helpers.GetJwtToken(ctx)
+
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
+		return
+	}
+
+	customerID, err := strconv.Atoi(ctx.Param("customer_id"))
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid customer_id"})
+		return
+	}
+
+	startLink, err := cont.ChatServ.InitTelegramChat(accessToken, clientID, customerID)
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx.JSON(200, gin.H{"success": true, "data": gin.H{"start_link": startLink}})
 }

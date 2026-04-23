@@ -7,6 +7,7 @@ import (
 	"backend/models/services"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,12 +24,35 @@ func NewPaymentContImpl(paymentServ services.PaymentServ) *PaymentContImpl {
 // PLATFORM
 // ============================================================
 
-// CreatePlatformCheckout @Summary      Create Platform Checkout
-// @Description  Buat sesi pembayaran Stripe untuk pembelian plan (platform Aidia), mengembalikan session URL untuk redirect ke halaman pembayaran Stripe
+// GetAvailableGateways godoc
+// @Summary      Get Available Payment Gateways
+// @Description  Returns a list of payment gateways that are configured and available for platform checkout (e.g. stripe, hitpay)
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
-// @Param        plan_id  path      string true "Plan ID"
+// @Success      200  {object}  helpers.ApiResponse{data=[]string}
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /payments/platform/gateways [get]
+func (cont *PaymentContImpl) GetAvailableGateways(ctx *gin.Context) {
+	gateways := cont.PaymentServ.GetAvailableGateways()
+
+	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{
+		Success: true,
+		Code:    200,
+		Data:    gateways,
+	})
+	if errResponse != nil {
+		exceptions.ErrorHandler(ctx, errResponse)
+	}
+}
+
+// CreatePlatformCheckout @Summary      Create Platform Checkout
+// @Description  Buat sesi pembayaran untuk pembelian plan (platform Aidia). Gunakan query param `gateway` untuk memilih gateway (stripe / hitpay). Jika kosong, pakai gateway default dari konfigurasi.
+// @Tags         Payment Platform
+// @Produce      json
+// @Security     BearerAuth
+// @Param        plan_id  path      string true  "Plan ID"
+// @Param        gateway  query     string false "Payment gateway: stripe | hitpay (default: active gateway)"
 // @Success      200      {object}  helpers.ApiResponse{data=payment.CheckoutResponse}
 // @Failure      400      {object}  helpers.ApiResponse
 // @Failure      401      {object}  helpers.ApiResponse
@@ -43,7 +67,9 @@ func (cont *PaymentContImpl) CreatePlatformCheckout(ctx *gin.Context) {
 		return
 	}
 
-	result, errServ := cont.PaymentServ.CreatePlatformCheckout(accessToken, planID)
+	gateway := ctx.Query("gateway")
+
+	result, errServ := cont.PaymentServ.CreatePlatformCheckout(accessToken, planID, gateway)
 	if errServ != nil {
 		exceptions.ErrorHandler(ctx, errServ)
 		return
@@ -63,11 +89,12 @@ func (cont *PaymentContImpl) CreatePlatformCheckout(ctx *gin.Context) {
 }
 
 // CreatePaymentFromExisting @Summary      Create Payment From Existing Invoice
-// @Description  Buat ulang sesi pembayaran Stripe untuk invoice yang belum dibayar, digunakan jika sesi sebelumnya expired
+// @Description  Buat ulang sesi pembayaran untuk invoice yang belum dibayar. Gunakan query param `gateway` untuk memilih gateway (stripe / hitpay).
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
-// @Param        invoice_id  path      string true "Invoice ID"
+// @Param        invoice_id  path      string true  "Invoice ID"
+// @Param        gateway     query     string false "Payment gateway: stripe | hitpay (default: active gateway)"
 // @Success      200         {object}  helpers.ApiResponse{data=payment.CheckoutResponse}
 // @Failure      400         {object}  helpers.ApiResponse
 // @Failure      401         {object}  helpers.ApiResponse
@@ -82,7 +109,9 @@ func (cont *PaymentContImpl) CreatePaymentFromExisting(ctx *gin.Context) {
 		return
 	}
 
-	result, errServ := cont.PaymentServ.CreatePaymentFromExisting(accessToken, invoiceID)
+	gateway := ctx.Query("gateway")
+
+	result, errServ := cont.PaymentServ.CreatePaymentFromExisting(accessToken, invoiceID, gateway)
 	if errServ != nil {
 		exceptions.ErrorHandler(ctx, errServ)
 		return
@@ -174,19 +203,19 @@ func (cont *PaymentContImpl) GetPlatformInvoiceByID(ctx *gin.Context) {
 	}
 }
 
-// HandlePlatformWebhook @Summary      Handle Platform Webhook
-// @Description  Endpoint untuk menerima event webhook dari Stripe platform Aidia (invoice.paid / invoice.payment_failed), tidak memerlukan autentikasi (TIDAK DIPAKAI KARENA INI UNTUK WEBHOOK SAJA)
+// HandlePlatformWebhookStripe godoc
+// @Summary      Handle Platform Stripe Webhook
+// @Description  Receives Stripe webhook events for Aidia platform payments (invoice.paid / invoice.payment_failed). No authentication required — validated via Stripe-Signature header.
 // @Tags         Payment Platform
 // @Accept       json
 // @Produce      json
-// @Param        Stripe-Signature  header    string true "Stripe Webhook Signature"
-// @Success      200               {object}  helpers.ApiResponse
-// @Failure      400               {object}  helpers.ApiResponse
-// @Failure      500               {object}  helpers.ApiResponse
-// @Router       /payments/platform/webhook [post]
-func (cont *PaymentContImpl) HandlePlatformWebhook(ctx *gin.Context) {
+// @Param        Stripe-Signature  header  string  true  "Stripe Webhook Signature"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      500  {object}  helpers.ApiResponse
+// @Router       /payments/platform/webhook/stripe [post]
+func (cont *PaymentContImpl) HandlePlatformWebhookStripe(ctx *gin.Context) {
 	payload, err := ctx.GetRawData()
-
 	if err != nil {
 		exceptions.ErrorHandler(ctx, err)
 		return
@@ -194,26 +223,59 @@ func (cont *PaymentContImpl) HandlePlatformWebhook(ctx *gin.Context) {
 
 	signature := ctx.GetHeader("Stripe-Signature")
 	if signature == "" {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("missing stripe signature"))
+		exceptions.ErrorHandler(ctx, fmt.Errorf("missing Stripe-Signature header"))
 		return
 	}
 
-	errServ := cont.PaymentServ.HandlePlatformWebhook(payload, signature)
-	if errServ != nil {
+	if errServ := cont.PaymentServ.HandlePlatformWebhookStripe(payload, signature); errServ != nil {
 		exceptions.ErrorHandler(ctx, errServ)
 		return
 	}
 
-	response := helpers.ApiResponse{
-		Success: true,
-		Code:    200,
-		Data:    nil,
-	}
-
-	errResponse := helpers.WriteToResponseBody(ctx, response.Code, response)
+	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{Success: true, Code: 200})
 	if errResponse != nil {
 		exceptions.ErrorHandler(ctx, errResponse)
+	}
+}
+
+// HandlePlatformWebhookHitPay godoc
+// @Summary      Handle Platform HitPay Webhook
+// @Description  Receives HitPay webhook events for Aidia platform payments (status: completed / failed). No authentication required — validated via HMAC-SHA256 in the form body.
+// @Tags         Payment Platform
+// @Accept       application/x-www-form-urlencoded
+// @Produce      json
+// @Param        payment_id        formData  string  true  "HitPay Payment ID"
+// @Param        payment_request_id formData  string  true  "HitPay Payment Request ID"
+// @Param        status            formData  string  true  "Payment status (completed / failed)"
+// @Param        reference_number  formData  string  false "Reference number (invoice number)"
+// @Param        amount            formData  string  false "Payment amount"
+// @Param        currency          formData  string  false "Currency"
+// @Param        hmac              formData  string  true  "HMAC-SHA256 signature"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      500  {object}  helpers.ApiResponse
+// @Router       /payments/platform/webhook/hitpay [post]
+func (cont *PaymentContImpl) HandlePlatformWebhookHitPay(ctx *gin.Context) {
+	if err := ctx.Request.ParseForm(); err != nil {
+		exceptions.ErrorHandler(ctx, fmt.Errorf("failed to parse form: %w", err))
 		return
+	}
+
+	formValues := make(map[string]string)
+	for k, v := range ctx.Request.PostForm {
+		if len(v) > 0 {
+			formValues[k] = v[0]
+		}
+	}
+
+	if errServ := cont.PaymentServ.HandlePlatformWebhookHitPay(formValues); errServ != nil {
+		exceptions.ErrorHandler(ctx, errServ)
+		return
+	}
+
+	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{Success: true, Code: 200})
+	if errResponse != nil {
+		exceptions.ErrorHandler(ctx, errResponse)
 	}
 }
 
@@ -305,18 +367,19 @@ func (cont *PaymentContImpl) GetClientInvoices(ctx *gin.Context) {
 	}
 }
 
-// HandleClientWebhook @Summary      [BELUM DIGUNAKAN] Handle Client Webhook
-// @Description  [BELUM DIGUNAKAN] Endpoint untuk menerima event webhook dari Stripe per tenant. Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.
+// HandleClientWebhookStripe godoc
+// @Summary      Handle Client Stripe Webhook
+// @Description  Receives Stripe webhook events for a specific tenant's order payments (invoice.paid / invoice.payment_failed). No authentication required — validated via Stripe-Signature header.
 // @Tags         Payment Client
 // @Accept       json
 // @Produce      json
-// @Param        schema            path      string true "Tenant Schema"
-// @Param        Stripe-Signature  header    string true "Stripe Webhook Signature"
-// @Success      200               {object}  helpers.ApiResponse
-// @Failure      400               {object}  helpers.ApiResponse
-// @Failure      500               {object}  helpers.ApiResponse
-// @Router       /payments/client/webhook/{schema} [post]
-func (cont *PaymentContImpl) HandleClientWebhook(ctx *gin.Context) {
+// @Param        schema            path    string  true  "Tenant Schema"
+// @Param        Stripe-Signature  header  string  true  "Stripe Webhook Signature"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      500  {object}  helpers.ApiResponse
+// @Router       /payments/client/{client_id}/webhook/stripe/{schema} [post]
+func (cont *PaymentContImpl) HandleClientWebhookStripe(ctx *gin.Context) {
 	schema := ctx.Param("schema")
 	if schema == "" {
 		exceptions.ErrorHandler(ctx, fmt.Errorf("missing schema param"))
@@ -331,25 +394,65 @@ func (cont *PaymentContImpl) HandleClientWebhook(ctx *gin.Context) {
 
 	signature := ctx.GetHeader("Stripe-Signature")
 	if signature == "" {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("missing stripe signature"))
+		exceptions.ErrorHandler(ctx, fmt.Errorf("missing Stripe-Signature header"))
 		return
 	}
 
-	errServ := cont.PaymentServ.HandleClientWebhook(schema, payload, signature)
-	if errServ != nil {
+	if errServ := cont.PaymentServ.HandleClientWebhookStripe(schema, payload, signature); errServ != nil {
 		exceptions.ErrorHandler(ctx, errServ)
 		return
 	}
 
-	response := helpers.ApiResponse{
-		Success: true,
-		Code:    200,
-		Data:    nil,
-	}
-
-	errResponse := helpers.WriteToResponseBody(ctx, response.Code, response)
+	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{Success: true, Code: 200})
 	if errResponse != nil {
 		exceptions.ErrorHandler(ctx, errResponse)
+	}
+}
+
+// HandleClientWebhookHitPay godoc
+// @Summary      Handle Client HitPay Webhook
+// @Description  Receives HitPay webhook events for a specific tenant's order payments (status: completed / failed). No authentication required — validated via HMAC-SHA256 in the form body.
+// @Tags         Payment Client
+// @Accept       application/x-www-form-urlencoded
+// @Produce      json
+// @Param        schema             path      string  true  "Tenant Schema"
+// @Param        payment_id         formData  string  true  "HitPay Payment ID"
+// @Param        payment_request_id formData  string  true  "HitPay Payment Request ID"
+// @Param        status             formData  string  true  "Payment status (completed / failed)"
+// @Param        reference_number   formData  string  false "Reference number"
+// @Param        amount             formData  string  false "Payment amount"
+// @Param        currency           formData  string  false "Currency"
+// @Param        hmac               formData  string  true  "HMAC-SHA256 signature"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      500  {object}  helpers.ApiResponse
+// @Router       /payments/client/{client_id}/webhook/hitpay/{schema} [post]
+func (cont *PaymentContImpl) HandleClientWebhookHitPay(ctx *gin.Context) {
+	schema := ctx.Param("schema")
+	if schema == "" {
+		exceptions.ErrorHandler(ctx, fmt.Errorf("missing schema param"))
 		return
+	}
+
+	if err := ctx.Request.ParseForm(); err != nil {
+		exceptions.ErrorHandler(ctx, fmt.Errorf("failed to parse form: %w", err))
+		return
+	}
+
+	formValues := make(map[string]string)
+	for k, v := range ctx.Request.PostForm {
+		if len(v) > 0 {
+			formValues[k] = v[0]
+		}
+	}
+
+	if errServ := cont.PaymentServ.HandleClientWebhookHitPay(schema, formValues); errServ != nil {
+		exceptions.ErrorHandler(ctx, errServ)
+		return
+	}
+
+	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{Success: true, Code: 200})
+	if errResponse != nil {
+		exceptions.ErrorHandler(ctx, errResponse)
 	}
 }

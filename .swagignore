@@ -1,0 +1,6 @@
+**/AppData/**
+**/go/pkg/**
+**/.vscode/**
+**/.git/**
+**/node_modules/**
+**/sdk/**

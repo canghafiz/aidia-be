@@ -11,4 +11,6 @@ type ChatServ interface {
 	GetConversationDetail(accessToken string, clientID, guestID uuid.UUID, platform string, beforeID *uuid.UUID, limit int) (interface{}, error)
 	MarkAsRead(accessToken string, clientID, guestID uuid.UUID) error
 	SendManualReply(accessToken string, clientID, guestID uuid.UUID, message, platform string) error
+	SendTemplateMessage(accessToken string, clientID, guestID uuid.UUID, templateName, languageCode string, bodyParams []string) error
+	InitTelegramChat(accessToken string, clientID uuid.UUID, customerID int) (string, error)
 }

@@ -21,15 +21,15 @@ import (
 )
 
 type PaymentServImpl struct {
-	Db                 *gorm.DB
-	JwtKey             string
-	UserRepo           repositories.UsersRepo
-	TenantPlanRepo     repositories.TenantPlanRepo
-	PlanRepo           repositories.PlanRepo
-	TenantRepo         repositories.TenantRepo
-	SettingRepo        repositories.SettingRepo
-	OrderPaymentRepo   repositories.OrderPaymentRepo
-	OrderRepo          repositories.OrderRepo
+	Db               *gorm.DB
+	JwtKey           string
+	UserRepo         repositories.UsersRepo
+	TenantPlanRepo   repositories.TenantPlanRepo
+	PlanRepo         repositories.PlanRepo
+	TenantRepo       repositories.TenantRepo
+	SettingRepo      repositories.SettingRepo
+	OrderPaymentRepo repositories.OrderPaymentRepo
+	OrderRepo        repositories.OrderRepo
 }
 
 func NewPaymentServImpl(
@@ -44,23 +44,23 @@ func NewPaymentServImpl(
 	orderRepo repositories.OrderRepo,
 ) *PaymentServImpl {
 	return &PaymentServImpl{
-		Db:                 db,
-		JwtKey:             jwtKey,
-		UserRepo:           userRepo,
-		TenantPlanRepo:     tenantPlanRepo,
-		PlanRepo:           planRepo,
-		TenantRepo:         tenantRepo,
-		SettingRepo:        settingRepo,
-		OrderPaymentRepo:   orderPaymentRepo,
-		OrderRepo:          orderRepo,
+		Db:               db,
+		JwtKey:           jwtKey,
+		UserRepo:         userRepo,
+		TenantPlanRepo:   tenantPlanRepo,
+		PlanRepo:         planRepo,
+		TenantRepo:       tenantRepo,
+		SettingRepo:      settingRepo,
+		OrderPaymentRepo: orderPaymentRepo,
+		OrderRepo:        orderRepo,
 	}
 }
 
 // ============================================================
-// HELPER
+// HELPERS
 // ============================================================
 
-func (serv *PaymentServImpl) getStripeKey(schema, subGroupName, name string) (string, error) {
+func (serv *PaymentServImpl) getKey(schema, subGroupName, name string) (string, error) {
 	settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", subGroupName)
 	if err != nil || len(settings) == 0 {
 		return "", fmt.Errorf("integration config not found for sub group: %s", subGroupName)
@@ -70,71 +70,22 @@ func (serv *PaymentServImpl) getStripeKey(schema, subGroupName, name string) (st
 			return s.Value, nil
 		}
 	}
-	return "", fmt.Errorf("stripe key not found: %s", name)
+	return "", fmt.Errorf("key not found: %s / %s", subGroupName, name)
 }
 
-// buildInvoice membuat Stripe Customer + InvoiceItem + Invoice
-// Return: invoiceID, hostedInvoiceURL, error
-func (serv *PaymentServImpl) buildInvoice(
-	tenantName string,
-	tenantEmail string,
-	invoiceNumber string,
-	planName string,
-	duration string,
-	priceInCents int64,
-	tenantPlanID uuid.UUID,
-) (string, string, error) {
-	// 1. Buat customer
-	customerParams := &stripe.CustomerParams{
-		Name:  stripe.String(tenantName),
-		Email: stripe.String(tenantEmail),
-		Metadata: map[string]string{
-			"tenant_plan_id": tenantPlanID.String(),
-			"invoice_number": invoiceNumber,
-		},
+// activeGateway returns "stripe" or "hitpay" based on the public.setting value.
+// Falls back to "stripe" if the setting is missing.
+func (serv *PaymentServImpl) activeGateway() string {
+	settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, "public", "integration", "Payment Gateway")
+	if err != nil || len(settings) == 0 {
+		return "stripe"
 	}
-	customer, err := stripecustomer.New(customerParams)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create stripe customer: %w", err)
+	for _, s := range settings {
+		if s.Name == "active-payment-gateway" {
+			return s.Value
+		}
 	}
-
-	// 2. Buat invoice dulu (kosong)
-	invoiceParams := &stripe.InvoiceParams{
-		Customer:         stripe.String(customer.ID),
-		CollectionMethod: stripe.String("send_invoice"),
-		DaysUntilDue:     stripe.Int64(7),
-		Metadata: map[string]string{
-			"tenant_plan_id": tenantPlanID.String(),
-			"invoice_number": invoiceNumber,
-		},
-	}
-	inv, err := stripeinvoice.New(invoiceParams)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create invoice: %w", err)
-	}
-
-	// 3. Buat invoice item dan attach ke invoice
-	itemParams := &stripe.InvoiceItemParams{
-		Customer:    stripe.String(customer.ID),
-		Invoice:     stripe.String(inv.ID),
-		Amount:      stripe.Int64(priceInCents),
-		Currency:    stripe.String("sgd"),
-		Description: stripe.String(fmt.Sprintf("%s | Invoice: %s | Duration: %s", planName, invoiceNumber, duration)),
-	}
-	_, err = stripeinvoiceitem.New(itemParams)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create invoice item: %w", err)
-	}
-	log.Printf("[buildInvoice] item attached, priceInCents: %d", priceInCents)
-
-	// 4. Finalize invoice
-	finalInv, err := stripeinvoice.FinalizeInvoice(inv.ID, nil)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to finalize invoice: %w", err)
-	}
-	log.Printf("[buildInvoice] invoice finalized: %s, amount_due: %d, hosted_url: %s", finalInv.ID, finalInv.AmountDue, finalInv.HostedInvoiceURL)
-
-	return finalInv.ID, finalInv.HostedInvoiceURL, nil
+	return "stripe"
 }
 
 func (serv *PaymentServImpl) getTenantByToken(accessToken string) (*domains.Tenant, error) {
@@ -151,11 +102,122 @@ func (serv *PaymentServImpl) getTenantByToken(accessToken string) (*domains.Tena
 	return tenant, nil
 }
 
+// buildStripeInvoice creates a Stripe Customer → InvoiceItem → Invoice
+// and returns (invoiceID, hostedURL, error).
+func (serv *PaymentServImpl) buildStripeInvoice(
+	tenantName, tenantEmail, invoiceNumber, planName, duration string,
+	priceInCents int64,
+	tenantPlanID uuid.UUID,
+) (string, string, error) {
+	customerParams := &stripe.CustomerParams{
+		Name:  stripe.String(tenantName),
+		Email: stripe.String(tenantEmail),
+		Metadata: map[string]string{
+			"tenant_plan_id": tenantPlanID.String(),
+			"invoice_number": invoiceNumber,
+		},
+	}
+	customer, err := stripecustomer.New(customerParams)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create stripe customer: %w", err)
+	}
+
+	invoiceParams := &stripe.InvoiceParams{
+		Customer:         stripe.String(customer.ID),
+		CollectionMethod: stripe.String("send_invoice"),
+		DaysUntilDue:     stripe.Int64(7),
+		Currency:         stripe.String("sgd"),
+		Metadata: map[string]string{
+			"tenant_plan_id": tenantPlanID.String(),
+			"invoice_number": invoiceNumber,
+		},
+	}
+	inv, err := stripeinvoice.New(invoiceParams)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create stripe invoice: %w", err)
+	}
+
+	itemParams := &stripe.InvoiceItemParams{
+		Customer:    stripe.String(customer.ID),
+		Invoice:     stripe.String(inv.ID),
+		Amount:      stripe.Int64(priceInCents),
+		Currency:    stripe.String("sgd"),
+		Description: stripe.String(fmt.Sprintf("%s | Invoice: %s | Duration: %s", planName, invoiceNumber, duration)),
+	}
+	if _, err = stripeinvoiceitem.New(itemParams); err != nil {
+		return "", "", fmt.Errorf("failed to create stripe invoice item: %w", err)
+	}
+
+	finalInv, err := stripeinvoice.FinalizeInvoice(inv.ID, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to finalize stripe invoice: %w", err)
+	}
+	log.Printf("[buildStripeInvoice] finalized: %s, amount: %d, url: %s", finalInv.ID, finalInv.AmountDue, finalInv.HostedInvoiceURL)
+
+	return finalInv.ID, finalInv.HostedInvoiceURL, nil
+}
+
+// buildHitPayPayment creates a HitPay payment request and returns (paymentID, paymentURL, error).
+func (serv *PaymentServImpl) buildHitPayPayment(
+	apiKey string,
+	tenantName, tenantEmail, invoiceNumber, planName, duration string,
+	price float64,
+	tenantPlanID uuid.UUID,
+	sandbox bool,
+) (string, string, error) {
+	redirectURL := os.Getenv("HITPAY_REDIRECT_URL")
+	webhookURL := os.Getenv("HITPAY_PLATFORM_WEBHOOK_URL")
+
+	if redirectURL == "" {
+		return "", "", fmt.Errorf("HITPAY_REDIRECT_URL env not set")
+	}
+	if webhookURL == "" {
+		return "", "", fmt.Errorf("HITPAY_PLATFORM_WEBHOOK_URL env not set")
+	}
+
+	resp, err := helpers.HitPayCreatePayment(apiKey, helpers.HitPayPaymentRequest{
+		Amount:          fmt.Sprintf("%.2f", price),
+		Currency:        "SGD",
+		Email:           tenantEmail,
+		Name:            tenantName,
+		ReferenceNumber: invoiceNumber,
+		RedirectURL:     redirectURL,
+		WebhookURL:      webhookURL,
+		Purpose:         fmt.Sprintf("%s | %s", planName, duration),
+	}, sandbox)
+	if err != nil {
+		return "", "", fmt.Errorf("hitpay payment creation failed: %w", err)
+	}
+
+	log.Printf("[buildHitPayPayment] created: id=%s, url=%s", resp.ID, resp.URL)
+	return resp.ID, resp.URL, nil
+}
+
 // ============================================================
-// PLATFORM - Stripe Aidia
+// PLATFORM — tenant purchases a plan
 // ============================================================
 
-func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID uuid.UUID) (*paymentRes.CheckoutResponse, error) {
+// GetAvailableGateways returns gateway keys that have a non-empty API key configured.
+func (serv *PaymentServImpl) GetAvailableGateways() []string {
+	var available []string
+
+	stripeKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
+	if err == nil && stripeKey != "" && stripeKey != "{stripe-aidia-secret-key}" {
+		available = append(available, "stripe")
+	}
+
+	hitpayKey, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-api-key")
+	if err == nil && hitpayKey != "" {
+		available = append(available, "hitpay")
+	}
+
+	if len(available) == 0 {
+		available = append(available, "stripe") // safe fallback
+	}
+	return available
+}
+
+func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID uuid.UUID, gateway string) (*paymentRes.CheckoutResponse, error) {
 	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"Client"})
 	if err != nil || !ok {
 		return nil, err
@@ -165,12 +227,6 @@ func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID u
 	if err != nil {
 		return nil, err
 	}
-
-	secretKey, err := serv.getStripeKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
-	if err != nil {
-		return nil, err
-	}
-	stripe.Key = secretKey
 
 	plan, err := serv.PlanRepo.GetByIdPublic(serv.Db, planID)
 	if err != nil {
@@ -189,7 +245,7 @@ func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID u
 		return nil, fmt.Errorf("failed to generate invoice number")
 	}
 	invoiceNumber := helpers.GenerateInvoiceNumber(sequence + 1)
-	dueDate := time.Now().Add(1 * 24 * time.Hour)
+	dueDate := time.Now().Add(24 * time.Hour)
 
 	tenantPlan, err := serv.TenantPlanRepo.Create(tx, domains.TenantPlan{
 		TenantID:       tenant.TenantID,
@@ -208,31 +264,70 @@ func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID u
 		return nil, fmt.Errorf("failed to create invoice")
 	}
 
-	// Ambil nama & email tenant
+	if gateway == "" {
+		gateway = serv.activeGateway()
+	}
 	tenantName := tenant.User.Name
 	tenantEmail := tenant.User.Email
-	priceInCents := int64(plan.Price * 100)
 	duration := paymentRes.FormatDuration(plan.Duration, plan.IsMonth)
 
-	stripeInvoiceID, hostedURL, err := serv.buildInvoice(
-		tenantName, tenantEmail, invoiceNumber, plan.Name, duration, priceInCents, tenantPlan.ID,
-	)
-	if err != nil {
+	var sessionID, sessionURL string
+
+	switch gateway {
+	case "hitpay":
+		apiKey, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-api-key")
+		if err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("HitPay API key not configured")
+		}
+		sandboxVal, _ := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-sandbox")
+		sandbox := sandboxVal == "true"
+
+		sessionID, sessionURL, err = serv.buildHitPayPayment(
+			apiKey, tenantName, tenantEmail, invoiceNumber, plan.Name, duration,
+			plan.Price, tenantPlan.ID, sandbox,
+		)
+		if err != nil {
+			tx.Rollback()
+			log.Printf("[HitPay].buildHitPayPayment error: %v", err)
+			return nil, fmt.Errorf("failed to create payment")
+		}
+
+	case "stripe":
+		secretKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
+		if err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("Stripe secret key not configured")
+		}
+		stripe.Key = secretKey
+		priceInCents := int64(plan.Price * 100)
+
+		sessionID, sessionURL, err = serv.buildStripeInvoice(
+			tenantName, tenantEmail, invoiceNumber, plan.Name, duration,
+			priceInCents, tenantPlan.ID,
+		)
+		if err != nil {
+			tx.Rollback()
+			log.Printf("[Stripe].buildStripeInvoice error: %v", err)
+			return nil, fmt.Errorf("failed to create payment invoice")
+		}
+
+	default:
 		tx.Rollback()
-		log.Printf("[Stripe].buildInvoice error: %v", err)
-		return nil, fmt.Errorf("failed to create payment invoice")
+		return nil, fmt.Errorf("unsupported payment gateway: %s", gateway)
 	}
 
 	pending := "pending"
-	if err := serv.TenantPlanRepo.UpdateStripeSession(tx, domains.TenantPlan{
-		ID:                          tenantPlan.ID,
-		StripeSessionID:             &stripeInvoiceID,
-		StripeSessionURL:            &hostedURL,
-		StripeSubscriptionInvoiceID: &stripeInvoiceID,
-		StripePaymentStatus:         &pending,
+	if err := serv.TenantPlanRepo.UpdatePaymentSession(tx, domains.TenantPlan{
+		ID:                    tenantPlan.ID,
+		PaymentGateway:        gateway,
+		PaymentSessionID:      &sessionID,
+		PaymentSessionURL:     &sessionURL,
+		SubscriptionInvoiceID: &sessionID,
+		PaymentGatewayStatus:  &pending,
 	}); err != nil {
 		tx.Rollback()
-		log.Printf("[TenantPlanRepo].UpdateStripeSession error: %v", err)
+		log.Printf("[TenantPlanRepo].UpdatePaymentSession error: %v", err)
 		return nil, fmt.Errorf("failed to update session")
 	}
 
@@ -243,12 +338,12 @@ func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID u
 
 	return &paymentRes.CheckoutResponse{
 		InvoiceID:  tenantPlan.ID,
-		SessionID:  stripeInvoiceID,
-		SessionURL: hostedURL,
+		SessionID:  sessionID,
+		SessionURL: sessionURL,
 	}, nil
 }
 
-func (serv *PaymentServImpl) CreatePaymentFromExisting(accessToken string, tenantPlanID uuid.UUID) (*paymentRes.CheckoutResponse, error) {
+func (serv *PaymentServImpl) CreatePaymentFromExisting(accessToken string, tenantPlanID uuid.UUID, gateway string) (*paymentRes.CheckoutResponse, error) {
 	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"Client"})
 	if err != nil || !ok {
 		return nil, err
@@ -268,46 +363,75 @@ func (serv *PaymentServImpl) CreatePaymentFromExisting(accessToken string, tenan
 	if tenantPlan.ExpiredDate != nil && tenantPlan.ExpiredDate.Before(time.Now()) {
 		return nil, fmt.Errorf("invoice already expired")
 	}
-
 	if tenantPlan.PaymentDueDate != nil && tenantPlan.PaymentDueDate.Before(time.Now()) {
 		return nil, fmt.Errorf("payment due date has passed, please create a new invoice")
 	}
 
-	secretKey, err := serv.getStripeKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
-	if err != nil {
-		return nil, err
+	if gateway == "" {
+		gateway = serv.activeGateway()
 	}
-	stripe.Key = secretKey
-
 	tenantName := tenant.User.Name
 	tenantEmail := tenant.User.Email
-	priceInCents := int64(tenantPlan.Price * 100)
 	duration := paymentRes.FormatDuration(tenantPlan.Duration, tenantPlan.IsMonth)
 
-	stripeInvoiceID, hostedURL, err := serv.buildInvoice(
-		tenantName, tenantEmail, tenantPlan.InvoiceNumber, tenantPlan.Plan.Name, duration, priceInCents, tenantPlan.ID,
-	)
-	if err != nil {
-		log.Printf("[Stripe].buildInvoice error: %v", err)
-		return nil, fmt.Errorf("failed to create payment invoice")
+	var sessionID, sessionURL string
+
+	switch gateway {
+	case "hitpay":
+		apiKey, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-api-key")
+		if err != nil {
+			return nil, fmt.Errorf("HitPay API key not configured")
+		}
+		sandboxVal, _ := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-sandbox")
+		sandbox := sandboxVal == "true"
+
+		sessionID, sessionURL, err = serv.buildHitPayPayment(
+			apiKey, tenantName, tenantEmail, tenantPlan.InvoiceNumber,
+			tenantPlan.Plan.Name, duration, tenantPlan.Price, tenantPlan.ID, sandbox,
+		)
+		if err != nil {
+			log.Printf("[HitPay].buildHitPayPayment error: %v", err)
+			return nil, fmt.Errorf("failed to create payment")
+		}
+
+	case "stripe":
+		secretKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
+		if err != nil {
+			return nil, fmt.Errorf("Stripe secret key not configured")
+		}
+		stripe.Key = secretKey
+		priceInCents := int64(tenantPlan.Price * 100)
+
+		sessionID, sessionURL, err = serv.buildStripeInvoice(
+			tenantName, tenantEmail, tenantPlan.InvoiceNumber,
+			tenantPlan.Plan.Name, duration, priceInCents, tenantPlan.ID,
+		)
+		if err != nil {
+			log.Printf("[Stripe].buildStripeInvoice error: %v", err)
+			return nil, fmt.Errorf("failed to create payment invoice")
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported payment gateway: %s", gateway)
 	}
 
 	pending := "pending"
-	if err := serv.TenantPlanRepo.UpdateStripeSession(serv.Db, domains.TenantPlan{
-		ID:                          tenantPlan.ID,
-		StripeSessionID:             &stripeInvoiceID,
-		StripeSessionURL:            &hostedURL,
-		StripeSubscriptionInvoiceID: &stripeInvoiceID,
-		StripePaymentStatus:         &pending,
+	if err := serv.TenantPlanRepo.UpdatePaymentSession(serv.Db, domains.TenantPlan{
+		ID:                    tenantPlan.ID,
+		PaymentGateway:        gateway,
+		PaymentSessionID:      &sessionID,
+		PaymentSessionURL:     &sessionURL,
+		SubscriptionInvoiceID: &sessionID,
+		PaymentGatewayStatus:  &pending,
 	}); err != nil {
-		log.Printf("[TenantPlanRepo].UpdateStripeSession error: %v", err)
+		log.Printf("[TenantPlanRepo].UpdatePaymentSession error: %v", err)
 		return nil, fmt.Errorf("failed to update session")
 	}
 
 	return &paymentRes.CheckoutResponse{
 		InvoiceID:  tenantPlan.ID,
-		SessionID:  stripeInvoiceID,
-		SessionURL: hostedURL,
+		SessionID:  sessionID,
+		SessionURL: sessionURL,
 	}, nil
 }
 
@@ -349,8 +473,12 @@ func (serv *PaymentServImpl) GetPlatformInvoiceByID(accessToken string, id uuid.
 	return &response, nil
 }
 
-func (serv *PaymentServImpl) HandlePlatformWebhook(payload []byte, signature string) error {
-	webhookSecret, err := serv.getStripeKey("public", "Stripe Aidia", "stripe-aidia-webhook-secret")
+// ============================================================
+// PLATFORM WEBHOOKS
+// ============================================================
+
+func (serv *PaymentServImpl) HandlePlatformWebhookStripe(payload []byte, signature string) error {
+	webhookSecret, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-webhook-secret")
 	if err != nil {
 		return err
 	}
@@ -362,7 +490,7 @@ func (serv *PaymentServImpl) HandlePlatformWebhook(payload []byte, signature str
 		},
 	)
 	if errEvent != nil {
-		log.Printf("[Webhook] ConstructEvent error detail: %v", errEvent)
+		log.Printf("[StripeWebhook] ConstructEvent error: %v", errEvent)
 		return fmt.Errorf("invalid webhook signature")
 	}
 
@@ -372,75 +500,143 @@ func (serv *PaymentServImpl) HandlePlatformWebhook(payload []byte, signature str
 		if !ok {
 			return fmt.Errorf("invalid invoice data")
 		}
-
-		log.Printf("[Webhook] invoice paid, invoiceID: %s", invoiceID)
-
-		tenantPlan, err := serv.TenantPlanRepo.GetByStripeInvoiceID(serv.Db, invoiceID)
-		if err != nil {
-			log.Printf("[Webhook] GetByStripeInvoiceID error: %v, invoiceID: %s", err, invoiceID)
-			return fmt.Errorf("tenant plan not found")
-		}
-
-		// Idempotent — skip kalau sudah paid
-		if tenantPlan.IsPaid {
-			return nil
-		}
-
-		now := time.Now()
-		var expiredDate time.Time
-		if tenantPlan.IsMonth {
-			expiredDate = now.AddDate(0, tenantPlan.Duration, 0)
-		} else {
-			expiredDate = now.AddDate(tenantPlan.Duration, 0, 0)
-		}
-
-		status := "paid"
-		if err := serv.TenantPlanRepo.UpdatePaymentStatus(serv.Db, domains.TenantPlan{
-			ID:                  tenantPlan.ID,
-			IsPaid:              true,
-			PlanStatus:          "Active",
-			StripePaymentStatus: &status,
-			PaidAt:              &now,
-			StartDate:           &now,
-			ExpiredDate:         &expiredDate,
-		}); err != nil {
-			log.Printf("[TenantPlanRepo].UpdatePaymentStatus error: %v", err)
-			return fmt.Errorf("failed to update payment status")
-		}
+		log.Printf("[StripeWebhook] invoice paid: %s", invoiceID)
+		return serv.markPlatformPaid(invoiceID)
 
 	case "invoice.payment_failed":
 		invoiceID, ok := event.Data.Object["id"].(string)
 		if !ok {
 			return fmt.Errorf("invalid invoice data")
 		}
-
-		tenantPlan, err := serv.TenantPlanRepo.GetByStripeInvoiceID(serv.Db, invoiceID)
-		if err != nil {
-			return fmt.Errorf("tenant plan not found")
-		}
-
-		if tenantPlan.IsPaid {
-			return nil
-		}
-
-		status := "failed"
-		msg := "Payment failed"
-		if err := serv.TenantPlanRepo.UpdatePaymentStatus(serv.Db, domains.TenantPlan{
-			ID:                   tenantPlan.ID,
-			IsPaid:               false,
-			PlanStatus:           "Inactive",
-			StripePaymentStatus:  &status,
-			StripePaymentMessage: &msg,
-		}); err != nil {
-			log.Printf("[TenantPlanRepo].UpdatePaymentStatus error: %v", err)
-		}
+		return serv.markPlatformFailed(invoiceID)
 	}
 
 	return nil
 }
 
+func (serv *PaymentServImpl) HandlePlatformWebhookHitPay(formValues map[string]string) error {
+	salt, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-webhook-salt")
+	if err != nil {
+		return err
+	}
+
+	if !helpers.HitPayVerifyWebhook(formValues, salt) {
+		return fmt.Errorf("invalid hitpay webhook signature")
+	}
+
+	status := formValues["status"]
+	referenceNumber := formValues["reference_number"]
+	paymentID := formValues["payment_id"]
+
+	log.Printf("[HitPayWebhook] status=%s reference=%s payment_id=%s", status, referenceNumber, paymentID)
+
+	switch status {
+	case "completed":
+		tenantPlan, err := serv.TenantPlanRepo.GetByPaymentInvoiceID(serv.Db, paymentID)
+		if err != nil {
+			// Try lookup by reference_number (invoice number) as fallback
+			log.Printf("[HitPayWebhook] GetByPaymentInvoiceID failed, trying reference: %v", err)
+			return fmt.Errorf("tenant plan not found for payment_id: %s", paymentID)
+		}
+		return serv.markPlatformPaid(tenantPlan.SubscriptionInvoiceID)
+
+	case "failed":
+		tenantPlan, err := serv.TenantPlanRepo.GetByPaymentInvoiceID(serv.Db, paymentID)
+		if err != nil {
+			return fmt.Errorf("tenant plan not found for payment_id: %s", paymentID)
+		}
+		return serv.markPlatformFailed(tenantPlan.SubscriptionInvoiceID)
+	}
+
+	return nil
+}
+
+// markPlatformPaid activates the tenant plan identified by invoiceID.
+func (serv *PaymentServImpl) markPlatformPaid(invoiceID interface{}) error {
+	var id string
+	switch v := invoiceID.(type) {
+	case string:
+		id = v
+	case *string:
+		if v == nil {
+			return fmt.Errorf("invoiceID is nil")
+		}
+		id = *v
+	default:
+		return fmt.Errorf("unsupported invoiceID type")
+	}
+
+	tenantPlan, err := serv.TenantPlanRepo.GetByPaymentInvoiceID(serv.Db, id)
+	if err != nil {
+		log.Printf("[markPlatformPaid] GetByPaymentInvoiceID error: %v, id: %s", err, id)
+		return fmt.Errorf("tenant plan not found")
+	}
+	if tenantPlan.IsPaid {
+		return nil // idempotent
+	}
+
+	now := time.Now()
+	var expiredDate time.Time
+	if tenantPlan.IsMonth {
+		expiredDate = now.AddDate(0, tenantPlan.Duration, 0)
+	} else {
+		expiredDate = now.AddDate(tenantPlan.Duration, 0, 0)
+	}
+
+	status := "paid"
+	if err := serv.TenantPlanRepo.UpdatePaymentStatus(serv.Db, domains.TenantPlan{
+		ID:                   tenantPlan.ID,
+		IsPaid:               true,
+		PlanStatus:           "Active",
+		PaymentGatewayStatus: &status,
+		PaidAt:               &now,
+		StartDate:            &now,
+		ExpiredDate:          &expiredDate,
+	}); err != nil {
+		log.Printf("[markPlatformPaid] UpdatePaymentStatus error: %v", err)
+		return fmt.Errorf("failed to update payment status")
+	}
+	return nil
+}
+
+func (serv *PaymentServImpl) markPlatformFailed(invoiceID interface{}) error {
+	var id string
+	switch v := invoiceID.(type) {
+	case string:
+		id = v
+	case *string:
+		if v == nil {
+			return fmt.Errorf("invoiceID is nil")
+		}
+		id = *v
+	default:
+		return fmt.Errorf("unsupported invoiceID type")
+	}
+
+	tenantPlan, err := serv.TenantPlanRepo.GetByPaymentInvoiceID(serv.Db, id)
+	if err != nil {
+		return fmt.Errorf("tenant plan not found")
+	}
+	if tenantPlan.IsPaid {
+		return nil
+	}
+
+	status := "failed"
+	msg := "Payment failed"
+	if err := serv.TenantPlanRepo.UpdatePaymentStatus(serv.Db, domains.TenantPlan{
+		ID:                    tenantPlan.ID,
+		IsPaid:                false,
+		PlanStatus:            "Inactive",
+		PaymentGatewayStatus:  &status,
+		PaymentGatewayMessage: &msg,
+	}); err != nil {
+		log.Printf("[markPlatformFailed] UpdatePaymentStatus error: %v", err)
+	}
+	return nil
+}
+
 // ============================================================
-// CLIENT - Stripe per tenant
+// CLIENT — tenant receives payments from their customers
 // ============================================================
 
 func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uuid.UUID) (*paymentRes.CheckoutResponse, error) {
@@ -448,12 +644,6 @@ func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uu
 	if err != nil {
 		return nil, err
 	}
-
-	secretKey, err := serv.getStripeKey(schema, "Stripe Client", "stripe-client-secret-key")
-	if err != nil {
-		return nil, err
-	}
-	stripe.Key = secretKey
 
 	successURL := os.Getenv("CLIENT_PAYMENT_SUCCESS_URL")
 	cancelURL := os.Getenv("CLIENT_PAYMENT_CANCEL_URL")
@@ -464,8 +654,19 @@ func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uu
 		return nil, fmt.Errorf("CLIENT_PAYMENT_CANCEL_URL env not set")
 	}
 
-	// TODO: Implement full order payment flow
-	// For now, return placeholder
+	gateway := serv.activeGateway()
+	switch gateway {
+	case "hitpay":
+		if _, err := serv.getKey(schema, "HitPay Client", "hitpay-client-api-key"); err != nil {
+			return nil, fmt.Errorf("HitPay client API key not configured")
+		}
+	default:
+		if _, err := serv.getKey(schema, "Stripe Client", "stripe-client-secret-key"); err != nil {
+			return nil, fmt.Errorf("Stripe client secret key not configured")
+		}
+	}
+
+	// TODO: implement full order payment flow per gateway
 	return &paymentRes.CheckoutResponse{
 		InvoiceID:  orderID,
 		SessionID:  "",
@@ -474,12 +675,11 @@ func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uu
 }
 
 func (serv *PaymentServImpl) GetClientInvoices(clientID uuid.UUID, pg domains.Pagination) (*pagination.Response, error) {
-	// Placeholder — sesuaikan dengan order domain tenant
 	return &pagination.Response{}, nil
 }
 
-func (serv *PaymentServImpl) HandleClientWebhook(schema string, payload []byte, signature string) error {
-	webhookSecret, err := serv.getStripeKey(schema, "Stripe Client", "stripe-client-webhook-secret")
+func (serv *PaymentServImpl) HandleClientWebhookStripe(schema string, payload []byte, signature string) error {
+	webhookSecret, err := serv.getKey(schema, "Stripe Client", "stripe-client-webhook-secret")
 	if err != nil {
 		return err
 	}
@@ -491,7 +691,7 @@ func (serv *PaymentServImpl) HandleClientWebhook(schema string, payload []byte, 
 		},
 	)
 	if errEvent != nil {
-		log.Printf("[ClientWebhook] ConstructEvent error: %v", errEvent)
+		log.Printf("[ClientStripeWebhook] ConstructEvent error: %v", errEvent)
 		return fmt.Errorf("invalid webhook signature")
 	}
 
@@ -501,62 +701,86 @@ func (serv *PaymentServImpl) HandleClientWebhook(schema string, payload []byte, 
 		if !ok {
 			return fmt.Errorf("invalid invoice data")
 		}
-
-		log.Printf("[ClientWebhook] Payment success for schema: %s, invoice: %s", schema, invoiceID)
-
-		// Update order payment status
-		orderPayment, err := serv.OrderPaymentRepo.GetByStripeInvoiceID(serv.Db, schema, invoiceID)
-		if err != nil {
-			log.Printf("[ClientWebhook] Order payment not found: %v", err)
-			return fmt.Errorf("order payment not found")
-		}
-
-		// Update payment status to Paid
-		err = serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, orderPayment.ID, domains.PaymentStatusPaid)
-		if err != nil {
-			log.Printf("[ClientWebhook] Failed to update payment status: %v", err)
-			return fmt.Errorf("failed to update payment status")
-		}
-
-		// Update order status to Confirmed
-		order, err := serv.OrderRepo.GetByID(serv.Db, schema, orderPayment.OrderID)
-		if err != nil {
-			log.Printf("[ClientWebhook] Order not found: %v", err)
-			return fmt.Errorf("order not found")
-		}
-
-		err = serv.OrderRepo.UpdateStatus(serv.Db, schema, order.ID, domains.OrderStatusConfirmed)
-		if err != nil {
-			log.Printf("[ClientWebhook] Failed to update order status: %v", err)
-			return fmt.Errorf("failed to update order status")
-		}
-
-		log.Printf("[ClientWebhook] Payment status updated to Paid for order #%d", order.ID)
+		log.Printf("[ClientStripeWebhook] Payment success schema=%s invoice=%s", schema, invoiceID)
+		return serv.markClientPaid(schema, invoiceID)
 
 	case "invoice.payment_failed":
 		invoiceID, ok := event.Data.Object["id"].(string)
 		if !ok {
 			return fmt.Errorf("invalid invoice data")
 		}
-
-		log.Printf("[ClientWebhook] Payment failed for schema: %s, invoice: %s", schema, invoiceID)
-
-		// Update order payment status to failed
-		orderPayment, err := serv.OrderPaymentRepo.GetByStripeInvoiceID(serv.Db, schema, invoiceID)
-		if err != nil {
-			log.Printf("[ClientWebhook] Order payment not found: %v", err)
-			return fmt.Errorf("order payment not found")
-		}
-
-		// Update payment status - mark as unpaid (will retry)
-		err = serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, orderPayment.ID, domains.PaymentStatusUnpaid)
-		if err != nil {
-			log.Printf("[ClientWebhook] Failed to update payment status: %v", err)
-			return fmt.Errorf("failed to update payment status")
-		}
-
-		log.Printf("[ClientWebhook] Payment status updated to Unpaid for order #%d", orderPayment.OrderID)
+		log.Printf("[ClientStripeWebhook] Payment failed schema=%s invoice=%s", schema, invoiceID)
+		return serv.markClientFailed(schema, invoiceID)
 	}
 
+	return nil
+}
+
+func (serv *PaymentServImpl) HandleClientWebhookHitPay(schema string, formValues map[string]string) error {
+	salt, err := serv.getKey(schema, "HitPay Client", "hitpay-client-webhook-salt")
+	if err != nil {
+		return err
+	}
+
+	if !helpers.HitPayVerifyWebhook(formValues, salt) {
+		return fmt.Errorf("invalid hitpay webhook signature")
+	}
+
+	status := formValues["status"]
+	paymentID := formValues["payment_id"]
+	referenceNumber := formValues["reference_number"]
+
+	log.Printf("[ClientHitPayWebhook] schema=%s status=%s payment_id=%s reference=%s", schema, status, paymentID, referenceNumber)
+
+	switch status {
+	case "completed":
+		return serv.markClientPaid(schema, paymentID)
+	case "failed":
+		return serv.markClientFailed(schema, paymentID)
+	}
+
+	return nil
+}
+
+func (serv *PaymentServImpl) markClientPaid(schema, invoiceID string) error {
+	orderPayment, err := serv.OrderPaymentRepo.GetByPaymentInvoiceID(serv.Db, schema, invoiceID)
+	if err != nil {
+		log.Printf("[markClientPaid] order payment not found: %v", err)
+		return fmt.Errorf("order payment not found")
+	}
+
+	if err := serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, orderPayment.ID, domains.PaymentStatusPaid); err != nil {
+		log.Printf("[markClientPaid] UpdateStatus error: %v", err)
+		return fmt.Errorf("failed to update payment status")
+	}
+
+	order, err := serv.OrderRepo.GetByID(serv.Db, schema, orderPayment.OrderID)
+	if err != nil {
+		log.Printf("[markClientPaid] order not found: %v", err)
+		return fmt.Errorf("order not found")
+	}
+
+	if err := serv.OrderRepo.UpdateStatus(serv.Db, schema, order.ID, domains.OrderStatusConfirmed); err != nil {
+		log.Printf("[markClientPaid] UpdateStatus order error: %v", err)
+		return fmt.Errorf("failed to update order status")
+	}
+
+	log.Printf("[markClientPaid] order #%d confirmed", order.ID)
+	return nil
+}
+
+func (serv *PaymentServImpl) markClientFailed(schema, invoiceID string) error {
+	orderPayment, err := serv.OrderPaymentRepo.GetByPaymentInvoiceID(serv.Db, schema, invoiceID)
+	if err != nil {
+		log.Printf("[markClientFailed] order payment not found: %v", err)
+		return fmt.Errorf("order payment not found")
+	}
+
+	if err := serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, orderPayment.ID, domains.PaymentStatusUnpaid); err != nil {
+		log.Printf("[markClientFailed] UpdateStatus error: %v", err)
+		return fmt.Errorf("failed to update payment status")
+	}
+
+	log.Printf("[markClientFailed] order #%d marked unpaid", orderPayment.OrderID)
 	return nil
 }

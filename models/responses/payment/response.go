@@ -53,7 +53,7 @@ func ToInvoiceResponse(tp domains.TenantPlan) InvoiceResponse {
 		ServiceStart:  tp.StartDate,
 		ExpiredDate:   tp.ExpiredDate,
 		PaidAt:        tp.PaidAt,
-		SessionURL:    tp.StripeSessionURL,
+		SessionURL:    tp.PaymentSessionURL,
 	}
 }
 

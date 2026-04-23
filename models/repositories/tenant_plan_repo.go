@@ -12,9 +12,9 @@ type TenantPlanRepo interface {
 	GetByID(db *gorm.DB, id uuid.UUID) (*domains.TenantPlan, error)
 	GetByIDAndTenantID(db *gorm.DB, id, tenantID uuid.UUID) (*domains.TenantPlan, error)
 	GetByTenantID(db *gorm.DB, tenantID uuid.UUID, pg domains.Pagination) ([]domains.TenantPlan, int, error)
-	GetByStripeSessionID(db *gorm.DB, sessionID string) (*domains.TenantPlan, error)
+	GetByPaymentSessionID(db *gorm.DB, sessionID string) (*domains.TenantPlan, error)
 	GetLastSequenceToday(db *gorm.DB) (int, error)
-	UpdateStripeSession(db *gorm.DB, tenantPlan domains.TenantPlan) error
+	UpdatePaymentSession(db *gorm.DB, tenantPlan domains.TenantPlan) error
 	UpdatePaymentStatus(db *gorm.DB, tenantPlan domains.TenantPlan) error
-	GetByStripeInvoiceID(db *gorm.DB, invoiceID string) (*domains.TenantPlan, error)
+	GetByPaymentInvoiceID(db *gorm.DB, invoiceID string) (*domains.TenantPlan, error)
 }

@@ -74,11 +74,11 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	deliveryAvailabilitySettingServ := implServ.NewDeliveryAvailabilitySettingServImpl(db, validator, userRepo, deliveryAvailabilitySettingRepo, deliverySettingRepo)
 	fileServ := implServ.NewFileServImpl()
 	productServ := implServ.NewProductServImpl(db, validator, userRepo, productRepo, deliverySettingRepo, fileServ)
-	customerServ := implServ.NewCustomerServImpl(db, validator, userRepo, customerRepo, jwtKey)
+	customerServ := implServ.NewCustomerServImpl(db, validator, userRepo, customerRepo, guestRepo, guestMessageRepo, settingRepo, whatsAppConnectionRepo, jwtKey)
 	orderServ := implServ.NewOrderServImpl(db, jwtKey, validator, userRepo, customerRepo, orderRepo, productRepo, deliverySettingRepo)
 	orderPaymentServ := implServ.NewOrderPaymentServImpl(db, jwtKey, validator, userRepo, orderPaymentRepo)
 	kitchenOrderServ := implServ.NewKitchenOrderServImpl(db, jwtKey, validator, userRepo, kitchenOrderRepo)
-	chatServ := implServ.NewChatServImpl(db, jwtKey, guestRepo, guestMessageRepo, userRepo, settingRepo)
+	chatServ := implServ.NewChatServImpl(db, jwtKey, guestRepo, guestMessageRepo, userRepo, settingRepo, customerRepo)
 
 	return &Dependency{
 		JwtKey: jwtKey,

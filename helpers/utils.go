@@ -3,6 +3,7 @@ package helpers
 import (
 	"backend/hub"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -77,4 +78,15 @@ func ParseUUID(context *gin.Context, param string) (uuid.UUID, error) {
 
 func GetChatHub() *hub.ChatHub {
 	return hub.GetChatHub()
+}
+
+var telegramUsernameRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]{3,30}[a-zA-Z0-9]$`)
+
+// IsValidTelegramUsername validates a Telegram username (without the leading '@').
+// Rules: 5–32 chars, letters/numbers/underscores, cannot start or end with underscore.
+func IsValidTelegramUsername(username string) bool {
+	if len(username) < 5 || len(username) > 32 {
+		return false
+	}
+	return telegramUsernameRegex.MatchString(username)
 }

@@ -36,7 +36,7 @@ func (cont *SettingContImpl) GetClientIntegration(context *gin.Context) {
 	}
 
 	// Get all settings from integration group - query each subgroup
-	subgroups := []string{"Telegram", "Stripe Client"}
+	subgroups := []string{"Telegram", "Stripe Client", "HitPay Client"}
 	responseData := []map[string]interface{}{}
 
 	for _, subGroupName := range subgroups {

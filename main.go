@@ -18,7 +18,7 @@ import (
 // @title           AI-Dia API
 // @version         1.0
 // @description     REST API for AI-Dia application
-// @host            data.ai-dia.com
+// @host            localhost:8005
 // @BasePath        /api/v1
 // @securityDefinitions.apiKey BearerAuth
 // @in              header
@@ -63,7 +63,7 @@ func main() {
 	engine := gin.Default()
 	engine.Use(cors.New(cors.Config{
 		AllowOrigins:  []string{"*"},
-		AllowMethods:  []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowMethods:  []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:  []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders: []string{"Content-Length"},
 		MaxAge:        24 * time.Hour,

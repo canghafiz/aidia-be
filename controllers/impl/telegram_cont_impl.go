@@ -190,6 +190,62 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	// Find or create guest
 	guest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 	if err != nil {
+		placeholderByUsername, placeholderErr := cont.GuestRepo.FindByUsername(cont.Db, schema, payload.Message.From.Username)
+		if placeholderErr == nil && placeholderByUsername != nil {
+			fullName := payload.Message.From.FirstName
+			if payload.Message.From.LastName != "" {
+				fullName += " " + payload.Message.From.LastName
+			}
+			placeholderByUsername.Identity = chatID
+			placeholderByUsername.Username = payload.Message.From.Username
+			placeholderByUsername.Name = fullName
+			placeholderByUsername.Platform = "telegram"
+			placeholderByUsername.PlatformChatID = chatID
+			placeholderByUsername.Sosmed = domains.JSONB{
+				"id":         float64(payload.Message.From.ID),
+				"first_name": payload.Message.From.FirstName,
+				"last_name":  payload.Message.From.LastName,
+				"username":   payload.Message.From.Username,
+				"is_bot":     payload.Message.From.IsBot,
+			}
+			if placeholderByUsername.ConversationState == nil {
+				placeholderByUsername.ConversationState = domains.JSONB{}
+			}
+
+			// Check if this is a customer deep link start: /start cust_{id}
+			isCustStart := false
+			if strings.HasPrefix(text, "/start cust_") {
+				custIDStr := strings.TrimPrefix(text, "/start cust_")
+				if custID, err := strconv.Atoi(custIDStr); err == nil {
+					if customer, err := cont.CustomerRepo.GetByID(cont.Db, schema, custID); err == nil && customer != nil {
+						placeholderByUsername.ConversationState["state"] = "registered"
+						if customer.PhoneCountryCode != nil && customer.PhoneNumber != nil {
+							placeholderByUsername.Phone = *customer.PhoneCountryCode + *customer.PhoneNumber
+						}
+						isCustStart = true
+					}
+				}
+			}
+
+			if err := cont.GuestRepo.Update(cont.Db, schema, *placeholderByUsername); err == nil {
+				guest = placeholderByUsername
+				if isCustStart {
+					menu := "ðŸ‘‹ Hello! Welcome.\n\n"
+					menu += "What would you like to do?\n\n"
+					menu += "Type 1 - See Products\n"
+					menu += "Type 2 - Create Order\n"
+					menu += "Type 3 - Check Order Status\n"
+					menu += "Type 4 - FAQ\n\n"
+					menu += "Just type 1, 2, 3, or 4"
+					cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
+				} else {
+					cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "ðŸ‘‹ Welcome! To complete your registration, please send your phone number.\n\nFormat: +628123456789\n\nâš ï¸ This is required to continue.")
+				}
+				ctx.JSON(200, gin.H{"status": "ok"})
+				return
+			}
+		}
+
 		// Create new guest
 		fullName := payload.Message.From.FirstName
 		if payload.Message.From.LastName != "" {
@@ -202,8 +258,8 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			Username:         payload.Message.From.Username,
 			Phone:            "",
 			Name:             fullName,
+			Platform:         "telegram",
 			PlatformChatID:   chatID,
-			PlatformUsername: payload.Message.From.Username,
 			Sosmed: domains.JSONB{
 				"id":         float64(payload.Message.From.ID),
 				"first_name": payload.Message.From.FirstName,
@@ -214,7 +270,23 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			IsActive:          true,
 			IsRead:            false,
 			IsTakeOver:        false,
-			ConversationState: domains.JSONB{"state": "waiting_for_phone"},
+			ConversationState: domains.JSONB{"state": "registered"},
+		}
+
+		// Check if this is a customer deep link start: /start cust_{id}
+		isCustStart := false
+		if strings.HasPrefix(text, "/start cust_") {
+			custIDStr := strings.TrimPrefix(text, "/start cust_")
+			if custID, err := strconv.Atoi(custIDStr); err == nil {
+				if customer, err := cont.CustomerRepo.GetByID(cont.Db, schema, custID); err == nil && customer != nil {
+					// Link this guest to the registered customer
+					guest.ConversationState = domains.JSONB{"state": "registered"}
+					if customer.PhoneCountryCode != nil && customer.PhoneNumber != nil {
+						guest.Phone = *customer.PhoneCountryCode + *customer.PhoneNumber
+					}
+					isCustStart = true
+				}
+			}
 		}
 
 		if err := cont.GuestRepo.Create(cont.Db, schema, *guest); err != nil {
@@ -225,8 +297,26 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 
 		guest, _ = cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 
-		// NEW GUEST - Ask for phone number
-		cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "👋 Welcome! To complete your registration, please send your phone number.\n\nFormat: +628123456789\n\n⚠️ This is required to continue.")
+		if isCustStart {
+			// Customer registered by client — skip phone collection, show menu
+			menu := "👋 Hello! Welcome.\n\n"
+			menu += "What would you like to do?\n\n"
+			menu += "Type 1 - See Products\n"
+			menu += "Type 2 - Create Order\n"
+			menu += "Type 3 - Check Order Status\n"
+			menu += "Type 4 - FAQ\n\n"
+			menu += "Just type 1, 2, 3, or 4"
+			cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
+		} else {
+			menu := "Hello! Welcome.\n\n"
+			menu += "What would you like to do?\n\n"
+			menu += "Type 1 - See Products\n"
+			menu += "Type 2 - Create Order\n"
+			menu += "Type 3 - Check Order Status\n"
+			menu += "Type 4 - FAQ\n\n"
+			menu += "Just type 1, 2, 3, or 4"
+			cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
+		}
 
 		ctx.JSON(200, gin.H{"status": "ok"})
 		return
@@ -238,41 +328,6 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 		if s, ok := guest.ConversationState["state"].(string); ok {
 			state = s
 		}
-	}
-
-	// EXISTING GUEST - Check if phone already exists
-	if guest.Phone == "" || guest.Phone == " " {
-		// Waiting for phone number
-		if text != "" {
-			if isValidPhoneNumber(text) {
-				// Update guest phone
-				guest.Phone = text
-				if guest.ConversationState == nil {
-					guest.ConversationState = domains.JSONB{}
-				}
-				guest.ConversationState["state"] = "registered"
-				cont.GuestRepo.Update(cont.Db, schema, *guest)
-				log.Printf("[Telegram Webhook] ✅ Guest phone updated: %s", guest.Phone)
-
-				// Send success message + MENU
-				menu := "✅ Phone number updated successfully!\n\n"
-				menu += "Your registration is complete! 🎉\n\n"
-				menu += "What would you like to do?\n\n"
-				menu += "Type 1 - See Products\n"
-				menu += "Type 2 - Create Order\n"
-				menu += "Type 3 - Check Order Status\n"
-				menu += "Type 4 - FAQ\n\n"
-				menu += "Just type 1, 2, 3, or 4"
-
-				cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
-			} else {
-				// Invalid phone format
-				cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "❌ Invalid phone number format.\n\nPlease use format: +628123456789\n\nExample: +628123456789")
-			}
-		}
-
-		ctx.JSON(200, gin.H{"status": "ok"})
-		return
 	}
 
 	// PHONE EXISTS - Save and broadcast every incoming message before routing
@@ -774,7 +829,9 @@ func (cont *TelegramContImpl) sendOrderStatusMessage(tgClient *helpers.TelegramC
 		customerPhone := guest.Phone
 		if o.Customer != nil {
 			customerName = o.Customer.Name
-			customerPhone = o.Customer.PhoneCountryCode + o.Customer.PhoneNumber
+			if o.Customer.PhoneCountryCode != nil && o.Customer.PhoneNumber != nil {
+				customerPhone = *o.Customer.PhoneCountryCode + *o.Customer.PhoneNumber
+			}
 		}
 
 		msg := fmt.Sprintf("Store: %s\n\n", storeName)
@@ -1126,10 +1183,10 @@ func (cont *TelegramContImpl) GetPublicOrderDetail(ctx *gin.Context) {
 		case domains.PaymentStatusVoided:
 			paymentColor = "#757575"
 		}
-		if order.Payment.StripeSessionURL != nil && *order.Payment.StripeSessionURL != "" {
+		if order.Payment.PaymentSessionURL != nil && *order.Payment.PaymentSessionURL != "" {
 			paymentInvoiceBtn = fmt.Sprintf(
 				`<a href="%s" style="display:inline-block;margin-top:16px;padding:12px 24px;background:#635bff;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Pay Invoice</a>`,
-				*order.Payment.StripeSessionURL)
+				*order.Payment.PaymentSessionURL)
 		}
 	}
 
@@ -1147,9 +1204,13 @@ func (cont *TelegramContImpl) GetPublicOrderDetail(ctx *gin.Context) {
 	// Customer info
 	customerInfo := ""
 	if order.Customer != nil {
+		phone := ""
+		if order.Customer.PhoneCountryCode != nil && order.Customer.PhoneNumber != nil {
+			phone = *order.Customer.PhoneCountryCode + *order.Customer.PhoneNumber
+		}
 		customerInfo = fmt.Sprintf(`<p style="margin:4px 0"><strong>Customer:</strong> %s</p>
-<p style="margin:4px 0"><strong>Phone:</strong> %s%s</p>`,
-			order.Customer.Name, order.Customer.PhoneCountryCode, order.Customer.PhoneNumber)
+<p style="margin:4px 0"><strong>Phone:</strong> %s</p>`,
+			order.Customer.Name, phone)
 	}
 
 	// Store name
@@ -1258,3 +1319,4 @@ func formatSGDPrice(price float64) string {
 }
 
 var _ interface{} = (*TelegramContImpl)(nil)
+

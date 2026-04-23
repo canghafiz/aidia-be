@@ -18,8 +18,8 @@ type Guest struct {
 	IsTakeOver        bool       `gorm:"column:is_take_over;not null;default:false"`
 	IsRead            bool       `gorm:"column:is_read;not null;default:false"`
 	IsActive          bool       `gorm:"column:is_active;not null;default:true"`
+	Platform          string     `gorm:"column:platform"`
 	PlatformChatID    string     `gorm:"column:platform_chat_id;index:idx_guest_platform_chat"`
-	PlatformUsername  string     `gorm:"column:platform_username"`
 	LastMessageAt     *time.Time `gorm:"column:last_message_at;index:idx_guest_last_message"`
 	ConversationState JSONB      `gorm:"column:conversation_state;type:jsonb"`
 	CreatedAt         time.Time  `gorm:"column:created_at;autoCreateTime"`
