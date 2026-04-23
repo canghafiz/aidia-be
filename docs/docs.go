@@ -806,6 +806,73 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Buat customer baru secara generic. Saat ini mendukung flow WhatsApp dari form CRM dengan ` + "`" + `account_type = Whatsapp` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Customer"
+                ],
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Create Customer Request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/customer.CreateCustomerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/customer.Response"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
             }
         },
         "/client/{client_id}/customers/telegram": {
@@ -5640,6 +5707,35 @@ const docTemplate = `{
                 }
             }
         },
+        "customer.CreateCustomerRequest": {
+            "type": "object",
+            "required": [
+                "account_type",
+                "name"
+            ],
+            "properties": {
+                "account_type": {
+                    "type": "string",
+                    "maxLength": 50
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 150
+                },
+                "phone_country_code": {
+                    "type": "string",
+                    "maxLength": 5
+                },
+                "phone_number": {
+                    "type": "string",
+                    "maxLength": 20
+                },
+                "username": {
+                    "type": "string",
+                    "maxLength": 100
+                }
+            }
+        },
         "customer.CreateTelegramCustomerRequest": {
             "type": "object",
             "required": [
@@ -5686,6 +5782,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "guest_id": {
                     "type": "string"
                 },
                 "id": {
@@ -7453,7 +7552,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8005",
+	Host:             "data.ai-dia.com",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "AI-Dia API",

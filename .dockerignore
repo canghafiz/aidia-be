@@ -36,11 +36,6 @@ coverage/
 # Testing
 testing/
 
-# Docs (will be copied separately)
-docs/docs.go
-docs/swagger.json
-docs/swagger.yaml
-
 # Git
 .git/
 .gitignore
