@@ -450,7 +450,7 @@ func (serv *CustomerServImpl) CreateWhatsApp(accessToken string, clientID uuid.U
 		return nil, fmt.Errorf("name, phone_country_code, and phone_number are required")
 	}
 
-	schema, tenantID, err := serv.getClientContext(clientID)
+	schema, _, err := serv.getClientContext(clientID)
 	if err != nil {
 		return nil, err
 	}
