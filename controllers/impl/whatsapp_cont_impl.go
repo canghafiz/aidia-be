@@ -382,13 +382,22 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 		return
 	}
 
-	// chatID = phone number only (for DB lookup/storage).
+	// chatID = identifier for DB lookup (phone digits or LID).
 	// sendTarget = full JID string for sending (may include @lid for LID accounts).
+	// isLID = true when the JID uses WhatsApp's Linked Identity format (not a real phone number).
+	isLID := strings.Contains(from, "@lid")
 	chatID := from
 	if atIdx := strings.Index(from, "@"); atIdx >= 0 {
 		chatID = from[:atIdx]
 	}
 	sendTarget := from
+
+	// For LID JIDs the User part is a numeric LID, not a phone number.
+	// Only build a real E.164 phone when the JID is a standard @s.whatsapp.net JID.
+	phoneFormatted := ""
+	if !isLID {
+		phoneFormatted = "+" + chatID
+	}
 
 	// Extract sender name from contacts
 	senderName := chatID
@@ -402,24 +411,30 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 	// Find or create guest
 	guest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 	if err != nil {
-		phoneFormatted := "+" + chatID
+		var existingGuest *domains.Guest
 
-		// Check if a guest with this phone already exists (e.g. registered via Telegram or added manually)
-		existingByPhone, phoneErr := cont.GuestRepo.FindByPhone(cont.Db, schema, phoneFormatted)
-		if phoneErr == nil && existingByPhone != nil {
-			existingByPhone.PlatformChatID = chatID
-			existingByPhone.Platform = "whatsapp"
-			existingByPhone.Identity = chatID
-			if existingByPhone.Name == "" && senderName != "" {
-				existingByPhone.Name = senderName
+		// 1. Try lookup by real phone (only for non-LID JIDs)
+		if phoneFormatted != "" {
+			if g, phoneErr := cont.GuestRepo.FindByPhone(cont.Db, schema, phoneFormatted); phoneErr == nil && g != nil {
+				existingGuest = g
 			}
-			existingByPhone.Sosmed = domains.JSONB{"wa_id": chatID, "jid": sendTarget, "name": existingByPhone.Name}
-			if existingByPhone.ConversationState == nil {
-				existingByPhone.ConversationState = domains.JSONB{"state": "registered"}
+		}
+
+		if existingGuest != nil {
+			existingGuest.PlatformChatID = chatID
+			existingGuest.Platform = "whatsapp"
+			existingGuest.Identity = chatID
+			if existingGuest.Name == "" && senderName != "" {
+				existingGuest.Name = senderName
 			}
-			cont.GuestRepo.Update(cont.Db, schema, *existingByPhone)
-			guest = existingByPhone
+			existingGuest.Sosmed = domains.JSONB{"wa_id": chatID, "jid": sendTarget, "name": existingGuest.Name}
+			if existingGuest.ConversationState == nil {
+				existingGuest.ConversationState = domains.JSONB{"state": "registered"}
+			}
+			cont.GuestRepo.Update(cont.Db, schema, *existingGuest)
+			guest = existingGuest
 		} else {
+			// New guest — phone is only set for real phone-based JIDs, never for LIDs.
 			guest = &domains.Guest{
 				TenantID:       &tenantID,
 				Identity:       chatID,
@@ -447,8 +462,22 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			guest, _ = cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 		}
 
-		// First contact — save message then route to n8n registration flow
-		if text != "" {
+		// Check if a customer record already exists for this guest so we can
+		// skip the registration flow for users who are already customers.
+		firstContactIsRegistered := false
+		if guest != nil && guest.Username != "" {
+			if c, _ := cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username); c != nil {
+				firstContactIsRegistered = true
+			}
+		}
+		if !firstContactIsRegistered && phoneFormatted != "" && len(phoneFormatted) > 3 {
+			if c, _ := cont.CustomerRepo.GetByPhone(cont.Db, schema, phoneFormatted[:3], phoneFormatted[3:]); c != nil {
+				firstContactIsRegistered = true
+			}
+		}
+
+		// Save and broadcast the first message
+		if text != "" && guest != nil {
 			incomingMsg := domains.GuestMessage{
 				GuestID:  guest.ID,
 				Role:     "user",
@@ -464,7 +493,7 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			guest.LastMessageAt = &now
 			cont.GuestRepo.Update(cont.Db, schema, *guest)
 		}
-		cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, false)
+		cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, firstContactIsRegistered)
 		return
 	}
 
@@ -510,6 +539,12 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 		if guest.Username != "" {
 			c, _ := cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username)
 			isRegisteredCustomer = c != nil
+		}
+		// Also check by phone in case customer was created manually with a different username.
+		if !isRegisteredCustomer && guest.Phone != "" && len(guest.Phone) > 3 {
+			if c, _ := cont.CustomerRepo.GetByPhone(cont.Db, schema, guest.Phone[:3], guest.Phone[3:]); c != nil {
+				isRegisteredCustomer = true
+			}
 		}
 		if !isRegisteredCustomer {
 			cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, false)
@@ -1205,10 +1240,20 @@ func (cont *WhatsAppContImpl) CompleteWhatsAppGuestRegistration(ctx *gin.Context
 		ctx.JSON(400, gin.H{"error": "name is required"})
 		return
 	}
+	if len([]rune(body.Name)) > 150 {
+		ctx.JSON(400, gin.H{"error": "name too long"})
+		return
+	}
 
 	guest, err := cont.GuestRepo.FindByID(cont.Db, schema, guestID)
 	if err != nil || guest == nil {
 		ctx.JSON(404, gin.H{"error": "guest not found"})
+		return
+	}
+
+	// Idempotency: if guest already registered, return success immediately.
+	if state, _ := guest.ConversationState["state"].(string); state == "registered" {
+		ctx.JSON(200, gin.H{"ok": true})
 		return
 	}
 
