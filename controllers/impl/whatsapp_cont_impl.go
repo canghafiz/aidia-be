@@ -470,8 +470,8 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 				firstContactIsRegistered = true
 			}
 		}
-		if !firstContactIsRegistered && phoneFormatted != "" && len(phoneFormatted) > 3 {
-			if c, _ := cont.CustomerRepo.GetByPhone(cont.Db, schema, phoneFormatted[:3], phoneFormatted[3:]); c != nil {
+		if !firstContactIsRegistered && !isLID && chatID != "" {
+			if c, _ := cont.CustomerRepo.GetByConcatPhone(cont.Db, schema, chatID); c != nil {
 				firstContactIsRegistered = true
 			}
 		}
@@ -541,8 +541,9 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			isRegisteredCustomer = c != nil
 		}
 		// Also check by phone in case customer was created manually with a different username.
-		if !isRegisteredCustomer && guest.Phone != "" && len(guest.Phone) > 3 {
-			if c, _ := cont.CustomerRepo.GetByPhone(cont.Db, schema, guest.Phone[:3], guest.Phone[3:]); c != nil {
+		// Use PlatformChatID (pure digits) with CONCAT query to avoid country-code split issues.
+		if !isRegisteredCustomer && guest.PlatformChatID != "" && !strings.Contains(guest.PlatformChatID, "@") {
+			if c, _ := cont.CustomerRepo.GetByConcatPhone(cont.Db, schema, guest.PlatformChatID); c != nil {
 				isRegisteredCustomer = true
 			}
 		}
@@ -1251,8 +1252,17 @@ func (cont *WhatsAppContImpl) CompleteWhatsAppGuestRegistration(ctx *gin.Context
 		return
 	}
 
-	// Idempotency: if guest already registered, return success immediately.
-	if state, _ := guest.ConversationState["state"].(string); state == "registered" {
+	// Idempotency: check if a customer record already exists for this guest.
+	// NOTE: do NOT check ConversationState["state"] == "registered" — that is the DEFAULT
+	// initial state for all new guests and does not indicate completed registration.
+	var existingCustomer *domains.Customer
+	if guest.Username != "" {
+		existingCustomer, _ = cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username)
+	}
+	if existingCustomer == nil && guest.PlatformChatID != "" && !strings.Contains(guest.PlatformChatID, "@") {
+		existingCustomer, _ = cont.CustomerRepo.GetByConcatPhone(cont.Db, schema, guest.PlatformChatID)
+	}
+	if existingCustomer != nil {
 		ctx.JSON(200, gin.H{"ok": true})
 		return
 	}
@@ -1271,8 +1281,10 @@ func (cont *WhatsAppContImpl) CompleteWhatsAppGuestRegistration(ctx *gin.Context
 		PostalCode:  toPtr(body.PostalCode),
 		AccountType: "Whatsapp",
 	}
+	// guest.Phone = "+6281234567890" — skip "+" at index 0, take digits only.
+	// phone_country_code stored without "+" (matches normalizeWhatsAppField behaviour).
 	if guest.Phone != "" && len(guest.Phone) > 3 && guest.Phone[0] == '+' {
-		customer.PhoneCountryCode = toPtr(guest.Phone[:3])
+		customer.PhoneCountryCode = toPtr(guest.Phone[1:3])
 		customer.PhoneNumber = toPtr(guest.Phone[3:])
 	}
 	if _, err := cont.CustomerRepo.Create(cont.Db, schema, customer); err != nil {
