@@ -1234,6 +1234,7 @@ func (cont *WhatsAppContImpl) CompleteWhatsAppGuestRegistration(ctx *gin.Context
 
 	var body struct {
 		Name       string `json:"name"`
+		Phone      string `json:"phone"`
 		Address    string `json:"address"`
 		PostalCode string `json:"postal_code"`
 	}
@@ -1281,11 +1282,24 @@ func (cont *WhatsAppContImpl) CompleteWhatsAppGuestRegistration(ctx *gin.Context
 		PostalCode:  toPtr(body.PostalCode),
 		AccountType: "Whatsapp",
 	}
-	// guest.Phone = "+6281234567890" — skip "+" at index 0, take digits only.
-	// phone_country_code stored without "+" (matches normalizeWhatsAppField behaviour).
-	if guest.Phone != "" && len(guest.Phone) > 3 && guest.Phone[0] == '+' {
-		customer.PhoneCountryCode = toPtr(guest.Phone[1:3])
-		customer.PhoneNumber = toPtr(guest.Phone[3:])
+	// Resolve phone: prefer body.Phone (LID accounts); fall back to guest.Phone (non-LID).
+	// Normalise to pure digits (strip +, spaces, dashes, leading zeros).
+	rawPhone := body.Phone
+	if rawPhone == "" {
+		rawPhone = guest.Phone
+	}
+	if rawPhone != "" {
+		digits := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, rawPhone)
+		digits = strings.TrimLeft(digits, "0")
+		if len(digits) > 2 {
+			customer.PhoneCountryCode = toPtr(digits[:2])
+			customer.PhoneNumber = toPtr(digits[2:])
+		}
 	}
 	if _, err := cont.CustomerRepo.Create(cont.Db, schema, customer); err != nil {
 		log.Printf("[WA Registration] create customer error: %v", err)
