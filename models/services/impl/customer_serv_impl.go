@@ -487,11 +487,7 @@ func (serv *CustomerServImpl) CreateWhatsApp(accessToken string, clientID uuid.U
 	existing, err := serv.CustomerRepo.GetByPhone(serv.Db, schema, request.PhoneCountryCode, request.PhoneNumber)
 	if err == nil && existing != nil {
 		response := res.ToResponse(*existing)
-		guest, guestErr := serv.ensureWhatsAppGuest(schema, tenantID, request)
-		if guestErr == nil && guest != nil {
-			guestID := guest.ID.String()
-			response.GuestID = &guestID
-		}
+		serv.attachGuestIDToResponse(schema, &response)
 		return &response, nil
 	}
 
@@ -503,13 +499,6 @@ func (serv *CustomerServImpl) CreateWhatsApp(accessToken string, clientID uuid.U
 	}
 
 	response := res.ToResponse(*customer)
-	guest, err := serv.ensureWhatsAppGuest(schema, tenantID, request)
-	if err != nil {
-		log.Printf("[CustomerServ].CreateWhatsApp ensure guest error: %v", err)
-	} else if guest != nil {
-		guestID := guest.ID.String()
-		response.GuestID = &guestID
-	}
 	return &response, nil
 }
 
