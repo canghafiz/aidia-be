@@ -241,7 +241,7 @@ func (cont *WhatsAppContImpl) Webhook(ctx *gin.Context) {
 }
 
 func (cont *WhatsAppContImpl) handleStatuses(schema string, statuses []WhatsAppStatus) {
-	user, err := cont.UserRepo.FindByUsernameOrEmail(cont.Db, schema, "Tenant")
+	user, err := cont.UserRepo.FindByTenantSchema(cont.Db, schema, "Tenant")
 	if err != nil || user == nil {
 		log.Printf("[WhatsApp Status] tenant not found for schema=%s: %v", schema, err)
 		return
@@ -362,7 +362,7 @@ func (cont *WhatsAppContImpl) disableWhatsAppAutoBot(schema, reason string) {
 // handleIncomingMessage processes a single incoming WhatsApp text message
 func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, contacts []WhatsAppContact) {
 	// Get tenant info
-	user, err := cont.UserRepo.FindByUsernameOrEmail(cont.Db, schema, "Tenant")
+	user, err := cont.UserRepo.FindByTenantSchema(cont.Db, schema, "Tenant")
 	if err != nil || user == nil {
 		log.Printf("[WhatsApp] tenant not found for schema=%s: %v", schema, err)
 		return

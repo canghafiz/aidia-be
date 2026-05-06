@@ -13,6 +13,7 @@ type UsersRepo interface {
 	ChangePassword(db *gorm.DB, user domains.Users) error
 	GetUserRole(db *gorm.DB, userID uuid.UUID) (string, error)
 	FindByUsernameOrEmail(db *gorm.DB, usernameOrEmail string, preloads ...string) (*domains.Users, error)
+	FindByTenantSchema(db *gorm.DB, schema string, preloads ...string) (*domains.Users, error)
 	CheckPasswordValid(db *gorm.DB, usernameOrEmail, password string) (bool, error)
 	CheckSuperAdminExist(db *gorm.DB) (bool, error)
 	GetByUserId(db *gorm.DB, userID uuid.UUID) (*domains.Users, error)

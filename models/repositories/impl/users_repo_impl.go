@@ -106,6 +106,25 @@ func (repo *UserRepoImpl) FindByUsernameOrEmail(db *gorm.DB, usernameOrEmail str
 	return &user, nil
 }
 
+func (repo *UserRepoImpl) FindByTenantSchema(db *gorm.DB, schema string, preloads ...string) (*domains.Users, error) {
+	if schema == "" {
+		return nil, errors.New("schema is required")
+	}
+	var user domains.Users
+	query := db.Model(&domains.Users{})
+	for _, preload := range preloads {
+		query = query.Preload(preload)
+	}
+	err := query.Where("tenant_schema = ?", schema).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (repo *UserRepoImpl) CheckPasswordValid(db *gorm.DB, usernameOrEmail, password string) (bool, error) {
 	result, err := repo.FindByUsernameOrEmail(db, usernameOrEmail)
 	if err != nil {

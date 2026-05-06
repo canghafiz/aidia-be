@@ -67,6 +67,14 @@ func (m *UsersRepoMock) FindByUsernameOrEmail(db *gorm.DB, usernameOrEmail strin
 	return args.Get(0).(*domains.Users), args.Error(1)
 }
 
+func (m *UsersRepoMock) FindByTenantSchema(db *gorm.DB, schema string, preloads ...string) (*domains.Users, error) {
+	args := m.Called(db, schema)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domains.Users), args.Error(1)
+}
+
 func (m *UsersRepoMock) CheckPasswordValid(db *gorm.DB, usernameOrEmail, password string) (bool, error) {
 	args := m.Called(db, usernameOrEmail, password)
 	return args.Bool(0), args.Error(1)

@@ -177,23 +177,52 @@ func (h *WhatsmeowHub) ConnectWithQR(ctx context.Context, schema string) (<-chan
 	h.clients[schema] = client
 	h.mu.Unlock()
 
+	// connectErrCh receives the error from Connect() only if it fails before
+	// any events arrive (e.g. network error, WA rate-limit). Buffer of 1 so
+	// the goroutine never blocks even if the relay goroutine already exited.
+	connectErrCh := make(chan error, 1)
 	go func() {
 		if err := client.Connect(); err != nil {
 			log.Printf("[WhatsmeowHub] connect error schema=%s: %v", schema, err)
+			connectErrCh <- err
 		}
 	}()
+
+	removeClient := func() {
+		h.mu.Lock()
+		if h.clients[schema] == client {
+			delete(h.clients, schema)
+			delete(h.phones, schema)
+		}
+		h.mu.Unlock()
+	}
 
 	out := make(chan whatsmeow.QRChannelItem, 8)
 	go func() {
 		defer close(out)
-		for item := range qrChan {
-			out <- item
-			if item.Event == "success" && client.Store.ID != nil {
-				phone := client.Store.ID.User
-				h.mu.Lock()
-				h.phones[schema] = phone
-				h.mu.Unlock()
-				h.saveSession(schema, client.Store.ID.String(), phone)
+		for {
+			select {
+			case item, ok := <-qrChan:
+				if !ok {
+					return
+				}
+				out <- item
+				if item.Event == "success" && client.Store.ID != nil {
+					phone := client.Store.ID.User
+					h.mu.Lock()
+					h.phones[schema] = phone
+					h.mu.Unlock()
+					h.saveSession(schema, client.Store.ID.String(), phone)
+				} else if item.Event != "code" {
+					// Terminal non-success event (timeout / error) — remove stale client
+					removeClient()
+				}
+			case err := <-connectErrCh:
+				// Connect() failed before any QR events were dispatched.
+				// Forward the error so the frontend shows a message instead of hanging.
+				out <- whatsmeow.QRChannelItem{Event: whatsmeow.QRChannelEventError, Error: err}
+				removeClient()
+				return
 			}
 		}
 	}()

@@ -178,7 +178,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	tgClient := helpers.NewTelegramClient(botToken)
 
 	// Get tenant info
-	user, err := cont.UserRepo.FindByUsernameOrEmail(cont.Db, schema, "Tenant")
+	user, err := cont.UserRepo.FindByTenantSchema(cont.Db, schema, "Tenant")
 	if err != nil || user == nil {
 		log.Printf("[Telegram Webhook] tenant not found: %v", err)
 		ctx.JSON(200, gin.H{"status": "ok"})
