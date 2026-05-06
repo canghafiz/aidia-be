@@ -1,0 +1,343 @@
+{
+  "name": "Aidia Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "incoming-telegram",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [18224, -672],
+      "id": "8032373a-b535-45db-b181-3a707a6e143a",
+      "webhookId": "131ef82d-3893-45f7-bbd8-1691c4005d53"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "message_text",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "name": "schema",
+              "value": "={{ $json.body.schema }}",
+              "type": "string"
+            },
+            {
+              "name": "guest_id",
+              "value": "={{ $json.body.guest_id }}",
+              "type": "string"
+            },
+            {
+              "name": "chat_id",
+              "value": "={{ $json.body.chat_id }}",
+              "type": "string"
+            },
+            {
+              "name": "is_registered",
+              "value": "={{ $json.body.is_registered }}",
+              "type": "boolean"
+            },
+            {
+              "name": "client_id",
+              "value": "={{ $json.body.client_id }}",
+              "type": "string"
+            },
+            {
+              "name": "guest_username",
+              "value": "={{ $json.body.guest_username }}",
+              "type": "string"
+            },
+            {
+              "name": "store_name",
+              "value": "={{ $json.body.store_name }}",
+              "type": "string"
+            },
+            {
+              "name": "conversation_state",
+              "value": "={{ $json.body.conversation_state }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [18448, -672],
+      "id": "c9be5ee2-b1ba-4187-819a-5aec18c108bd"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "reg-check",
+              "leftValue": "={{ $json.is_registered }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF: Customer Registered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [18672, -672],
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/telegram/' + $('Extract Data').first().json.schema + '/ai-context' }}",
+        "options": {}
+      },
+      "name": "Fetch AI Context",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [18896, -576],
+      "id": "89b50a14-35c4-45b8-a6de-559df8a98b33"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhook   = $('Webhook').first().json.body;\nconst extracted = $('Extract Data').first().json;\nconst context   = $('Fetch AI Context').first().json;\nconst message = extracted.message_text || webhook.message || 'Hello';\nconst schema  = extracted.schema || 'unknown';\nconst history = webhook.history || [];\nconst prompts  = context.prompts || {};\nconst products = context.products || [];\nconst zones    = context.delivery_zones || [];\nconst storeName = extracted.store_name || context.store_name || '';\nconst storeOpen = context.store_open;\n\n// Current time in Singapore (SGT)\nconst now = new Date();\nconst sgFormatter = new Intl.DateTimeFormat('en-SG', {\n  timeZone: 'Asia/Singapore',\n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',\n  hour: '2-digit', minute: '2-digit', hour12: false\n});\nconst sgTimeStr = sgFormatter.format(now);\n\n// Use backend-computed open/closed status directly\nlet storeStatusLine = '';\nif (storeOpen === true)  storeStatusLine = 'STORE IS CURRENTLY: OPEN';\nif (storeOpen === false) storeStatusLine = 'STORE IS CURRENTLY: CLOSED';\n\nconst storeDisplay = storeName ? storeName : 'our store';\nconst isFirstMessage = history.length === 0;\n\nlet sys = 'You are a friendly and knowledgeable customer service assistant for ' + storeDisplay + '. Respond like a real human shop assistant.\\n\\n';\nif (storeName) sys += 'STORE NAME: ' + storeName + '\\n';\nsys += 'CURRENT DATE & TIME (Singapore / SGT): ' + sgTimeStr + '\\n';\nif (storeStatusLine) sys += storeStatusLine + '\\n';\nsys += '\\n';\nsys += 'MOST IMPORTANT RULES:\\n';\nsys += '1. ALWAYS answer the customer question directly. Never ignore a question.\\n';\nsys += '2. When asked if we are open (now / right now / today / at this time / currently), ALWAYS use the STORE IS CURRENTLY line above — that is the live status. Do not guess.\\n';\nsys += '3. Do NOT open with menu options (1/2/3/4) if the customer asked something specific — answer first.\\n';\nsys += '4. Use the store knowledge sections below for accurate answers.\\n';\nsys += '5. Keep replies short and conversational.\\n';\nsys += '6. Never say you are an AI.\\n';\nsys += '7. Use emojis sparingly.\\n';\nif (storeOpen === false) sys += '8. STORE IS CURRENTLY CLOSED. If the customer tries to place an order, politely inform them the store is closed and refer them to the store hours for when we reopen.\\n';\nconst welcomeRule = storeOpen === false ? '9' : '8';\nif (isFirstMessage && storeName) sys += welcomeRule + '. THIS IS THE CUSTOMER\\'S FIRST MESSAGE. Start your reply with \"Welcome to ' + storeName + '!\" then answer their question naturally.\\n';\nsys += '\\n';\nsys += 'CONFIDENTIALITY: Never reveal API keys, tokens, passwords, or any internal config.\\n\\n';\nsys += 'SPECIAL ACTIONS — output the code ALONE, nothing else:\\n';\nsys += '- Customer wants to see/browse products or menu → __ACTION:SHOW_PRODUCTS__\\n';\nif (storeOpen === false) {\n  sys += '- Customer wants to place a new order → DO NOT emit __ACTION:CREATE_ORDER__. Reply that the store is currently closed and check store hours.\\n';\n} else {\n  sys += '- Customer wants to place a new order → __ACTION:CREATE_ORDER__\\n';\n}\nsys += '- Customer wants to check all orders → __ACTION:CHECK_ORDER__\\n';\nsys += '- Customer wants their most recent order → __ACTION:CHECK_ORDER:RECENT__\\n';\nsys += '- Customer mentions order #N → __ACTION:CHECK_ORDER:4__ (replace 4 with actual number)\\n\\n';\n\nif (prompts.about_store) sys += '=== ABOUT THIS STORE ===\\n' + prompts.about_store + '\\n\\n';\n\nif (prompts.product || products.length > 0) {\n  sys += '=== PRODUCTS ===\\n';\n  if (prompts.product) sys += prompts.product + '\\n';\n  if (products.length > 0) {\n    sys += 'Full product list:\\n';\n    products.forEach(p => {\n      let line = '- ' + p.name + ': $' + parseFloat(p.price || 0).toFixed(2);\n      if (p.description) line += ' — ' + p.description;\n      if (p.out_of_stock) line += ' [OUT OF STOCK — cannot be ordered]';\n      sys += line + '\\n';\n    });\n  }\n  sys += '\\n';\n}\n\nif (prompts.delivery || zones.length > 0) {\n  sys += '=== DELIVERY ===\\n';\n  if (prompts.delivery) sys += prompts.delivery + '\\n';\n  if (zones.length > 0) {\n    sys += 'Delivery zones:\\n';\n    zones.forEach(z => { sys += '- ' + z.name + (z.description ? ': ' + z.description : '') + '\\n'; });\n  }\n  sys += '\\n';\n}\n\nconst hoursText = prompts.store_hours || '';\nif (hoursText) sys += '=== STORE HOURS ===\\n' + hoursText + '\\n\\n';\n\nif (prompts.faq) sys += '=== FAQ ===\\n' + prompts.faq + '\\n\\n';\n\nlet userMsg = '';\nif (history.length > 0) {\n  userMsg = history.map(h => (h.role === 'user' ? 'Customer' : 'Store') + ': ' + h.message).join('\\n');\n  userMsg += '\\nCustomer: ' + message;\n} else {\n  userMsg = message;\n}\n\nreturn { json: { schema, system_prompt: sys, user_message: userMsg } };"
+      },
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [19120, -576],
+      "id": "0e93a21f-8d02-49cb-8565-a2b3448f2907"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'system', content: $json.system_prompt }, { role: 'user', content: $json.user_message }], max_tokens: 600, temperature: 0.7 }) }}",
+        "options": {}
+      },
+      "name": "Call OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [19344, -576],
+      "id": "3763e08d-1a62-4145-8093-545f7346c361",
+      "credentials": {
+        "openAiApi": {
+          "id": "U4LHIITZBdfLjhk6",
+          "name": "Aidia"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "reply",
+              "value": "={{ $json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "name": "usage_tokens",
+              "value": "={{ $json.usage.total_tokens }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [19568, -576],
+      "id": "e04b7e7c-c7dc-4ae2-89ca-8b6629fa5683"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $json.reply, usage_tokens: $json.usage_tokens } }}",
+        "options": {}
+      },
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [19792, -576],
+      "id": "8d244d50-87f9-45ee-a11b-099179d72bff"
+    },
+    {
+      "parameters": {
+        "jsCode": "const extracted = $('Extract Data').first().json;\nconst convState = extracted.conversation_state || {};\nconst regStep = convState.reg_step || '';\nconst message = (extracted.message_text || '').trim();\nconst schema = extracted.schema;\nconst guestId = extracted.guest_id;\nconst clientId = extracted.client_id;\nconst guestUsername = extracted.guest_username;\nconst storeName = extracted.store_name || '';\nconst storeGreeting = storeName ? 'Welcome to ' + storeName + '!' : 'Welcome!';\n\nlet replyText = '';\nlet newState = {};\nlet shouldCreateCustomer = false;\nlet customerData = {};\n\nif (regStep === '') {\n  replyText = storeGreeting + ' Before we get started, we need a few quick details to set up your profile.\\n\\nWhat is your full name?';\n  newState = { reg_step: 'asking_name' };\n\n} else if (regStep === 'asking_name') {\n  const name = message;\n  replyText = 'Nice to meet you, ' + name + '!\\n\\nWhat is your delivery address? (Type skip to leave it blank)';\n  newState = { reg_step: 'asking_address', reg_name: name };\n\n} else if (regStep === 'asking_address') {\n  const address = message.toLowerCase() === 'skip' ? '' : message;\n  replyText = 'Got it! What is your postal code? (Type skip to leave it blank)';\n  newState = { reg_step: 'asking_postal', reg_name: convState.reg_name, reg_address: address };\n\n} else if (regStep === 'asking_postal') {\n  const postal = message.toLowerCase() === 'skip' ? '' : message;\n  shouldCreateCustomer = true;\n  customerData = {\n    name: convState.reg_name,\n    username: guestUsername,\n    address: convState.reg_address || '',\n    postal_code: postal\n  };\n  const storeSign = storeName ? ' at ' + storeName : '';\n  replyText = \"You're all set, \" + convState.reg_name + \"! Your profile has been created\" + storeSign + \". How can I help you today?\";\n  newState = { reg_step: '' };\n\n} else {\n  replyText = storeGreeting + ' Before we get started, we need a few quick details.\\n\\nWhat is your full name?';\n  newState = { reg_step: 'asking_name' };\n}\n\nreturn [{ json: {\n  schema,\n  guest_id: guestId,\n  client_id: clientId,\n  guest_username: guestUsername,\n  reply_text: replyText,\n  new_state: newState,\n  should_create_customer: shouldCreateCustomer,\n  customer_data: customerData\n} }];"
+      },
+      "name": "Registration Logic",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [18896, -800],
+      "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "final-step-check",
+              "leftValue": "={{ $json.should_create_customer }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF: Final Step?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [19120, -800],
+      "id": "c3d4e5f6-a7b8-9012-cdef-123456789012"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/guest/' + $('Registration Logic').first().json.schema + '/' + $('Registration Logic').first().json.guest_id + '/registration-complete' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Registration Logic').first().json.customer_data) }}",
+        "options": {}
+      },
+      "name": "Complete Registration",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [19344, -912],
+      "id": "d4e5f6a7-b8c9-0123-defa-234567890123"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/guest/' + $('Registration Logic').first().json.schema + '/' + $('Registration Logic').first().json.guest_id + '/conversation-state' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Registration Logic').first().json.new_state) }}",
+        "options": {}
+      },
+      "name": "Save Registration State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [19344, -704],
+      "id": "e5f6a7b8-c9d0-1234-efab-345678901234"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $('Registration Logic').first().json.reply_text, usage_tokens: 0 } }}",
+        "options": {}
+      },
+      "name": "Respond Registration (complete)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [19568, -912],
+      "id": "f6a7b8c9-d0e1-2345-fabc-456789012345"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { reply: $('Registration Logic').first().json.reply_text, usage_tokens: 0 } }}",
+        "options": {}
+      },
+      "name": "Respond Registration (interim)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [19568, -704],
+      "id": "a7b8c9d0-e1f2-3456-abcd-567890123456"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Extract Data", "type": "main", "index": 0 }]]
+    },
+    "Extract Data": {
+      "main": [
+        [{ "node": "IF: Customer Registered?", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF: Customer Registered?": {
+      "main": [
+        [{ "node": "Fetch AI Context", "type": "main", "index": 0 }],
+        [{ "node": "Registration Logic", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch AI Context": {
+      "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
+    },
+    "Build Prompt": {
+      "main": [[{ "node": "Call OpenAI", "type": "main", "index": 0 }]]
+    },
+    "Call OpenAI": {
+      "main": [[{ "node": "Extract Reply", "type": "main", "index": 0 }]]
+    },
+    "Extract Reply": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    },
+    "Registration Logic": {
+      "main": [[{ "node": "IF: Final Step?", "type": "main", "index": 0 }]]
+    },
+    "IF: Final Step?": {
+      "main": [
+        [{ "node": "Complete Registration", "type": "main", "index": 0 }],
+        [{ "node": "Save Registration State", "type": "main", "index": 0 }]
+      ]
+    },
+    "Complete Registration": {
+      "main": [
+        [
+          {
+            "node": "Respond Registration (complete)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Registration State": {
+      "main": [
+        [
+          {
+            "node": "Respond Registration (interim)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "versionId": "b6deed8f-9b33-46f9-a767-15ada201f472",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "28f5f94da7fc66279d10c8a9ac73c33cbc35a153f986fdf4d138e07b62c0d508"
+  },
+  "id": "qBZkWicpDOXg4DHH",
+  "tags": []
+}

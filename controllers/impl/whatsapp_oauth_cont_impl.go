@@ -53,20 +53,20 @@ func NewWhatsAppOAuthContImpl(
 }
 
 type connectWhatsAppRequest struct {
-	Code          string `json:"code" binding:"required"`  // dari Embedded Signup callback
-	WabaID        string `json:"waba_id" binding:"required"` // dari message event WA_EMBEDDED_SIGNUP
-	PhoneNumberID string `json:"phone_number_id"`           // dari message event, opsional
+	Code          string `json:"code" binding:"required"`  // from Embedded Signup callback
+	WabaID        string `json:"waba_id" binding:"required"` // from WA_EMBEDDED_SIGNUP message event
+	PhoneNumberID string `json:"phone_number_id"`           // from message event, optional
 }
 
 // Connect godoc
 // @Summary      Connect WhatsApp Business Account
-// @Description  Connect tenant's WhatsApp Business account via Meta Embedded Signup. Frontend sends code + waba_id dari Embedded Signup callback, backend tukar code dengan access token.
+// @Description  Connect tenant's WhatsApp Business account via Meta Embedded Signup. Frontend sends code + waba_id from Embedded Signup callback, backend exchanges code for access token.
 // @Tags         WhatsApp
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id  path      string                   true  "Client ID"
-// @Param        request    body      connectWhatsAppRequest   true  "code dan waba_id dari Embedded Signup"
+// @Param        request    body      connectWhatsAppRequest   true  "code and waba_id from Embedded Signup"
 // @Success      200        {object}  helpers.ApiResponse
 // @Failure      400        {object}  helpers.ApiResponse
 // @Failure      401        {object}  helpers.ApiResponse
@@ -81,45 +81,45 @@ func (cont *WhatsAppOAuthContImpl) Connect(ctx *gin.Context) {
 
 	var req connectWhatsAppRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(400, gin.H{"success": false, "message": "code dan waba_id wajib diisi"})
+		ctx.JSON(400, gin.H{"success": false, "message": "code and waba_id are required"})
 		return
 	}
 
-	// Tukar code dari Embedded Signup dengan access token
-	// Tidak perlu redirect_uri untuk Embedded Signup (JS SDK flow)
-	log.Printf("[WA OAuth] menukar Embedded Signup code untuk user=%s waba=%s", userIDStr, req.WabaID)
+	// Exchange Embedded Signup code for access token
+	// No redirect_uri needed for Embedded Signup (JS SDK flow)
+	log.Printf("[WA OAuth] exchanging Embedded Signup code for user=%s waba=%s", userIDStr, req.WabaID)
 	accessToken, err := helpers.ExchangeCodeForToken(req.Code)
 	if err != nil {
-		log.Printf("[WA OAuth] gagal exchange code: %v", err)
-		ctx.JSON(400, gin.H{"success": false, "message": "Gagal verifikasi akun WhatsApp: " + err.Error()})
+		log.Printf("[WA OAuth] failed to exchange code: %v", err)
+		ctx.JSON(400, gin.H{"success": false, "message": "Failed to verify WhatsApp account: " + err.Error()})
 		return
 	}
 
-	// Extend token agar tahan ~60 hari
+	// Extend token to last ~60 days
 	extendedToken, err := helpers.ExtendToken(accessToken)
 	if err != nil {
-		log.Printf("[WA OAuth] gagal extend token, pakai token pendek: %v", err)
+		log.Printf("[WA OAuth] failed to extend token, using short-lived token: %v", err)
 		extendedToken = accessToken
 	}
 
-	// 3. Ambil phone number ID
+	// 3. Get phone number ID
 	phoneNumberID := req.PhoneNumberID
 	phoneNumber := ""
 	displayName := ""
 
 	if phoneNumberID == "" {
-		// Fetch dari WABA jika tidak dikirim dari frontend
+		// Fetch from WABA if not sent by frontend
 		phones, err := helpers.GetWABAPhoneNumbers(req.WabaID, extendedToken)
 		if err != nil || len(phones) == 0 {
-			log.Printf("[WA OAuth] gagal ambil phone numbers: %v", err)
-			ctx.JSON(400, gin.H{"success": false, "message": "Gagal mendapatkan nomor telepon dari akun WhatsApp Business"})
+			log.Printf("[WA OAuth] failed to fetch phone numbers: %v", err)
+			ctx.JSON(400, gin.H{"success": false, "message": "Failed to retrieve phone number from WhatsApp Business account"})
 			return
 		}
 		phoneNumberID = phones[0].ID
 		phoneNumber = phones[0].DisplayPhoneNumber
 		displayName = phones[0].VerifiedName
 	} else {
-		// Cari info nomor dari daftar WABA
+		// Look up number info from WABA list
 		phones, err := helpers.GetWABAPhoneNumbers(req.WabaID, extendedToken)
 		if err == nil {
 			for _, p := range phones {
@@ -132,18 +132,18 @@ func (cont *WhatsAppOAuthContImpl) Connect(ctx *gin.Context) {
 		}
 	}
 
-	// 4. Subscribe app kita ke webhook events WABA ini
+	// 4. Subscribe our app to this WABA's webhook events
 	if err := helpers.SubscribeAppToWABA(req.WabaID, extendedToken); err != nil {
-		log.Printf("[WA OAuth] ⚠️ gagal subscribe webhook ke WABA=%s: %v", req.WabaID, err)
+		log.Printf("[WA OAuth] ⚠️ failed to subscribe webhook to WABA=%s: %v", req.WabaID, err)
 	} else {
-		log.Printf("[WA OAuth] ✅ webhook subscribed ke WABA=%s", req.WabaID)
+		log.Printf("[WA OAuth] ✅ webhook subscribed to WABA=%s", req.WabaID)
 	}
 
 	registrationStatus := waRegistrationStatus{Ready: true}
 	if pin := cont.ensureTenantRegistrationPin(tenantSchema); pin != "" && phoneNumberID != "" {
 		waClient := helpers.NewWhatsAppClient(phoneNumberID, extendedToken)
 		if err := waClient.RegisterPhoneNumber(pin); err != nil {
-			log.Printf("[WA OAuth] gagal register phone_number_id=%s: %v", phoneNumberID, err)
+			log.Printf("[WA OAuth] failed to register phone_number_id=%s: %v", phoneNumberID, err)
 			registrationStatus.Ready = false
 			if helpers.IsWhatsAppRegistrationBlocked(err) {
 				registrationStatus.Message = "Connected, but this number is still attached to another WhatsApp account and cannot send messages yet."
@@ -151,12 +151,12 @@ func (cont *WhatsAppOAuthContImpl) Connect(ctx *gin.Context) {
 				registrationStatus.Message = "Connected, but the WhatsApp business number is not ready to send messages yet."
 			}
 		} else {
-			log.Printf("[WA OAuth] nomor WhatsApp berhasil diregister phone_number_id=%s", phoneNumberID)
+			log.Printf("[WA OAuth] WhatsApp number successfully registered phone_number_id=%s", phoneNumberID)
 			registrationStatus.Message = ""
 		}
 	}
 
-	// 5. Simpan ke public.whatsapp_connections
+	// 5. Save to public.whatsapp_connections
 	userID, _ := uuid.Parse(userIDStr)
 	now := time.Now()
 	conn := domains.WhatsAppConnection{
@@ -171,16 +171,16 @@ func (cont *WhatsAppOAuthContImpl) Connect(ctx *gin.Context) {
 	}
 
 	if err := cont.WhatsAppConnectionRepo.Upsert(cont.Db, conn); err != nil {
-		log.Printf("[WA OAuth] gagal simpan koneksi: %v", err)
-		ctx.JSON(500, gin.H{"success": false, "message": "Gagal menyimpan koneksi"})
+		log.Printf("[WA OAuth] failed to save connection: %v", err)
+		ctx.JSON(500, gin.H{"success": false, "message": "Failed to save connection"})
 		return
 	}
 
-	// 6. Sinkronisasi ke tenant setting table agar getWhatsAppClient() tetap berfungsi
+	// 6. Sync to tenant setting table so getWhatsAppClient() keeps working
 	cont.syncToTenantSettings(tenantSchema, phoneNumberID, extendedToken)
 	cont.updateRegistrationStatus(tenantSchema, registrationStatus)
 
-	log.Printf("[WA OAuth] ✅ berhasil hubungkan WhatsApp untuk schema=%s phone_number_id=%s", tenantSchema, phoneNumberID)
+	log.Printf("[WA OAuth] ✅ successfully connected WhatsApp for schema=%s phone_number_id=%s", tenantSchema, phoneNumberID)
 
 	ctx.JSON(200, gin.H{
 		"success": true,
@@ -217,7 +217,7 @@ func (cont *WhatsAppOAuthContImpl) Status(ctx *gin.Context) {
 	userID, _ := uuid.Parse(userIDStr)
 	conn, err := cont.WhatsAppConnectionRepo.FindByUserID(cont.Db, userID)
 	if err != nil {
-		// Belum terhubung
+		// Not connected yet
 		ctx.JSON(200, gin.H{
 			"success": true,
 			"code":    200,
@@ -270,20 +270,20 @@ func (cont *WhatsAppOAuthContImpl) Disconnect(ctx *gin.Context) {
 	userID, _ := uuid.Parse(userIDStr)
 
 	if err := cont.WhatsAppConnectionRepo.DeleteByUserID(cont.Db, userID); err != nil {
-		log.Printf("[WA OAuth] gagal disconnect untuk user=%s: %v", userIDStr, err)
-		ctx.JSON(500, gin.H{"success": false, "message": "Gagal memutuskan koneksi"})
+		log.Printf("[WA OAuth] failed to disconnect for user=%s: %v", userIDStr, err)
+		ctx.JSON(500, gin.H{"success": false, "message": "Failed to disconnect"})
 		return
 	}
 
-	// Hapus credentials dari tenant setting table
+	// Clear credentials from tenant setting table
 	cont.clearTenantSettings(tenantSchema)
 
-	log.Printf("[WA OAuth] koneksi WhatsApp diputus untuk schema=%s", tenantSchema)
+	log.Printf("[WA OAuth] WhatsApp connection disconnected for schema=%s", tenantSchema)
 
 	ctx.JSON(200, gin.H{
 		"success": true,
 		"code":    200,
-		"data":    gin.H{"message": "Koneksi WhatsApp berhasil diputus"},
+		"data":    gin.H{"message": "WhatsApp connection successfully disconnected"},
 	})
 }
 
@@ -298,7 +298,7 @@ func (cont *WhatsAppOAuthContImpl) GetConfig(ctx *gin.Context) {
 	appID := os.Getenv("META_APP_ID")
 	configID := os.Getenv("META_EMBEDDED_SIGNUP_CONFIG_ID")
 	if appID == "" {
-		ctx.JSON(500, gin.H{"success": false, "message": "META_APP_ID belum dikonfigurasi"})
+		ctx.JSON(500, gin.H{"success": false, "message": "META_APP_ID is not configured"})
 		return
 	}
 	ctx.JSON(200, gin.H{
@@ -311,7 +311,7 @@ func (cont *WhatsAppOAuthContImpl) GetConfig(ctx *gin.Context) {
 	})
 }
 
-// GetAuthURL — deprecated, diganti Embedded Signup
+// GetAuthURL — deprecated, replaced by Embedded Signup
 func (cont *WhatsAppOAuthContImpl) GetAuthURL(ctx *gin.Context) {
 	userIDStr, tenantSchema := cont.getUserContext(ctx)
 	if userIDStr == "" || tenantSchema == "" {
@@ -323,18 +323,18 @@ func (cont *WhatsAppOAuthContImpl) GetAuthURL(ctx *gin.Context) {
 	callbackURL := os.Getenv("META_OAUTH_CALLBACK_URL")
 
 	if appID == "" || callbackURL == "" {
-		ctx.JSON(500, gin.H{"success": false, "message": "META_APP_ID atau META_OAUTH_CALLBACK_URL belum dikonfigurasi"})
+		ctx.JSON(500, gin.H{"success": false, "message": "META_APP_ID or META_OAUTH_CALLBACK_URL is not configured"})
 		return
 	}
 
-	// State token berisi user_id + tenant_schema, berlaku 10 menit (anti-CSRF)
+	// State token contains user_id + tenant_schema, valid for 10 minutes (anti-CSRF)
 	stateData := map[string]interface{}{
 		"user_id":       userIDStr,
 		"tenant_schema": tenantSchema,
 	}
 	stateToken, err := helpers.GenerateJWT(cont.JwtKey, 10*time.Minute, stateData)
 	if err != nil {
-		ctx.JSON(500, gin.H{"success": false, "message": "Gagal generate state token"})
+		ctx.JSON(500, gin.H{"success": false, "message": "Failed to generate state token"})
 		return
 	}
 
@@ -350,7 +350,7 @@ func (cont *WhatsAppOAuthContImpl) GetAuthURL(ctx *gin.Context) {
 	var authURL string
 	if loginPlatform == "instagram" {
 		// Instagram Business Login — uses instagram.com OAuth entry point
-		// Mengakses WABA yang terhubung ke Instagram Business Account
+		// Accesses the WABA linked to the Instagram Business Account
 		params.Set("scope", "whatsapp_business_management,whatsapp_business_messaging,business_management,instagram_basic,instagram_manage_insights")
 		authURL = "https://www.instagram.com/oauth/authorize?" + params.Encode()
 	} else {
@@ -379,14 +379,14 @@ func (cont *WhatsAppOAuthContImpl) GetAuthURL(ctx *gin.Context) {
 func (cont *WhatsAppOAuthContImpl) ConnectWithSession(ctx *gin.Context) {
 	var req connectWithSessionRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil || req.SessionToken == "" || req.WabaID == "" {
-		ctx.JSON(400, gin.H{"success": false, "message": "session_token dan waba_id wajib diisi"})
+		ctx.JSON(400, gin.H{"success": false, "message": "session_token and waba_id are required"})
 		return
 	}
 
 	// Decode session token
 	sessionData, err := helpers.DecodeJWT(req.SessionToken, cont.JwtKey)
 	if err != nil {
-		ctx.JSON(401, gin.H{"success": false, "message": "Session token tidak valid atau sudah kadaluarsa"})
+		ctx.JSON(401, gin.H{"success": false, "message": "Session token is invalid or expired"})
 		return
 	}
 	accessToken, _ := sessionData["access_token"].(string)
@@ -394,14 +394,14 @@ func (cont *WhatsAppOAuthContImpl) ConnectWithSession(ctx *gin.Context) {
 	tenantSchema, _ := sessionData["tenant_schema"].(string)
 
 	if accessToken == "" || userIDStr == "" || tenantSchema == "" {
-		ctx.JSON(400, gin.H{"success": false, "message": "Session tidak lengkap"})
+		ctx.JSON(400, gin.H{"success": false, "message": "Session data is incomplete"})
 		return
 	}
 
-	// Ambil nomor telepon dari WABA yang diinput user
+	// Get phone number from the WABA entered by the user
 	phones, err := helpers.GetWABAPhoneNumbers(req.WabaID, accessToken)
 	if err != nil || len(phones) == 0 {
-		ctx.JSON(400, gin.H{"success": false, "message": "Gagal mendapatkan nomor telepon dari WABA: " + req.WabaID})
+		ctx.JSON(400, gin.H{"success": false, "message": "Failed to retrieve phone number from WABA: " + req.WabaID})
 		return
 	}
 
@@ -422,10 +422,10 @@ func (cont *WhatsAppOAuthContImpl) ConnectWithSession(ctx *gin.Context) {
 
 	// Subscribe webhook
 	if err := helpers.SubscribeAppToWABA(req.WabaID, accessToken); err != nil {
-		log.Printf("[WA Session Connect] gagal subscribe webhook WABA=%s: %v", req.WabaID, err)
+		log.Printf("[WA Session Connect] failed to subscribe webhook WABA=%s: %v", req.WabaID, err)
 	}
 
-	// Simpan ke DB
+	// Save to DB
 	userID, _ := uuid.Parse(userIDStr)
 	now := time.Now()
 	conn := domains.WhatsAppConnection{
@@ -439,7 +439,7 @@ func (cont *WhatsAppOAuthContImpl) ConnectWithSession(ctx *gin.Context) {
 		ConnectedAt:   now,
 	}
 	if err := cont.WhatsAppConnectionRepo.Upsert(cont.Db, conn); err != nil {
-		ctx.JSON(500, gin.H{"success": false, "message": "Gagal menyimpan koneksi"})
+		ctx.JSON(500, gin.H{"success": false, "message": "Failed to save connection"})
 		return
 	}
 	cont.syncToTenantSettings(tenantSchema, phoneNumberID, accessToken)
@@ -447,7 +447,7 @@ func (cont *WhatsAppOAuthContImpl) ConnectWithSession(ctx *gin.Context) {
 		waClient := helpers.NewWhatsAppClient(phoneNumberID, accessToken)
 		registrationStatus := waRegistrationStatus{Ready: true}
 		if err := waClient.RegisterPhoneNumber(pin); err != nil {
-			log.Printf("[WA Session Connect] gagal register phone_number_id=%s: %v", phoneNumberID, err)
+			log.Printf("[WA Session Connect] failed to register phone_number_id=%s: %v", phoneNumberID, err)
 			registrationStatus.Ready = false
 			if helpers.IsWhatsAppRegistrationBlocked(err) {
 				registrationStatus.Message = "Connected, but this number is still attached to another WhatsApp account and cannot send messages yet."
@@ -455,12 +455,12 @@ func (cont *WhatsAppOAuthContImpl) ConnectWithSession(ctx *gin.Context) {
 				registrationStatus.Message = "Connected, but the WhatsApp business number is not ready to send messages yet."
 			}
 		} else {
-			log.Printf("[WA Session Connect] nomor WhatsApp berhasil diregister phone_number_id=%s", phoneNumberID)
+			log.Printf("[WA Session Connect] WhatsApp number successfully registered phone_number_id=%s", phoneNumberID)
 		}
 		cont.updateRegistrationStatus(tenantSchema, registrationStatus)
 	}
 
-	log.Printf("[WA Session Connect] ✅ terhubung schema=%s phone=%s waba=%s", tenantSchema, phoneNumber, req.WabaID)
+	log.Printf("[WA Session Connect] ✅ connected schema=%s phone=%s waba=%s", tenantSchema, phoneNumber, req.WabaID)
 
 	ctx.JSON(200, gin.H{
 		"success": true,
@@ -493,21 +493,21 @@ func (cont *WhatsAppOAuthContImpl) OAuthRedirect(ctx *gin.Context) {
 
 	claims, err := helpers.DecodeJWT(tokenStr, cont.JwtKey)
 	if err != nil {
-		ctx.JSON(401, gin.H{"success": false, "message": "Token tidak valid atau sudah kadaluarsa"})
+		ctx.JSON(401, gin.H{"success": false, "message": "Token is invalid or expired"})
 		return
 	}
 
 	userIDStr, _ := claims["user_id"].(string)
 	tenantSchema, _ := claims["tenant_schema"].(string)
 	if userIDStr == "" || tenantSchema == "" {
-		ctx.JSON(401, gin.H{"success": false, "message": "Token tidak mengandung user context"})
+		ctx.JSON(401, gin.H{"success": false, "message": "Token does not contain user context"})
 		return
 	}
 
 	appID := os.Getenv("META_APP_ID")
 	callbackURL := os.Getenv("META_OAUTH_CALLBACK_URL")
 	if appID == "" || callbackURL == "" {
-		ctx.JSON(500, gin.H{"success": false, "message": "META_APP_ID atau META_OAUTH_CALLBACK_URL belum dikonfigurasi"})
+		ctx.JSON(500, gin.H{"success": false, "message": "META_APP_ID or META_OAUTH_CALLBACK_URL is not configured"})
 		return
 	}
 
@@ -517,7 +517,7 @@ func (cont *WhatsAppOAuthContImpl) OAuthRedirect(ctx *gin.Context) {
 	}
 	stateToken, err := helpers.GenerateJWT(cont.JwtKey, 10*time.Minute, stateData)
 	if err != nil {
-		ctx.JSON(500, gin.H{"success": false, "message": "Gagal generate state token"})
+		ctx.JSON(500, gin.H{"success": false, "message": "Failed to generate state token"})
 		return
 	}
 
@@ -542,8 +542,8 @@ func (cont *WhatsAppOAuthContImpl) OAuthRedirect(ctx *gin.Context) {
 	ctx.Redirect(302, oauthURL)
 }
 
-// OAuthCallback menerima redirect dari Meta setelah user login & grant permission.
-// Backend otomatis: tukar code → extend token → cari WABA → ambil nomor → simpan → redirect FE.
+// OAuthCallback receives the redirect from Meta after the user logs in and grants permission.
+// Backend automatically: exchange code → extend token → find WABA → get number → save → redirect to FE.
 // GET /api/v1/webhook/whatsapp/oauth-callback (public, no auth)
 func (cont *WhatsAppOAuthContImpl) OAuthCallback(ctx *gin.Context) {
 	frontendURL := os.Getenv("META_FRONTEND_REDIRECT_URL")
@@ -555,51 +555,51 @@ func (cont *WhatsAppOAuthContImpl) OAuthCallback(ctx *gin.Context) {
 		ctx.Redirect(302, frontendURL+"?wa_status=error&message="+url.QueryEscape(msg))
 	}
 
-	// 1. Ambil code + state dari query
+	// 1. Get code + state from query params
 	code := ctx.Query("code")
 	stateToken := ctx.Query("state")
 	if code == "" || stateToken == "" {
-		redirectError("Parameter tidak lengkap dari Meta")
+		redirectError("Incomplete parameters from Meta")
 		return
 	}
 
-	// 2. Validasi state token → pastikan request sah & dapat user context
+	// 2. Validate state token → ensure request is legitimate and extract user context
 	stateData, err := helpers.DecodeJWT(stateToken, cont.JwtKey)
 	if err != nil {
-		redirectError("State token tidak valid atau sudah kadaluarsa")
+		redirectError("State token is invalid or expired")
 		return
 	}
 	userIDStr, _ := stateData["user_id"].(string)
 	tenantSchema, _ := stateData["tenant_schema"].(string)
 	if userIDStr == "" || tenantSchema == "" {
-		redirectError("State token tidak mengandung data yang valid")
+		redirectError("State token does not contain valid data")
 		return
 	}
 
 	callbackURL := os.Getenv("META_OAUTH_CALLBACK_URL")
 
-	// 3. Tukar code dengan access token
+	// 3. Exchange code for access token
 	accessToken, err := helpers.ExchangeCodeForTokenWithURI(code, callbackURL)
 	if err != nil {
-		log.Printf("[WA Callback] gagal exchange code untuk user=%s: %v", userIDStr, err)
-		redirectError("Gagal menghubungkan akun WhatsApp")
+		log.Printf("[WA Callback] failed to exchange code for user=%s: %v", userIDStr, err)
+		redirectError("Failed to connect WhatsApp account")
 		return
 	}
 
-	// 4. Extend token agar tahan ~60 hari
+	// 4. Extend token to last ~60 days
 	extendedToken, err := helpers.ExtendToken(accessToken)
 	if err != nil {
-		log.Printf("[WA Callback] gagal extend token, pakai token pendek: %v", err)
+		log.Printf("[WA Callback] failed to extend token, using short-lived token: %v", err)
 		extendedToken = accessToken
 	}
 
-	// 5. Ambil daftar WABA milik user → otomatis pilih yang pertama
+	// 5. Get user's WABA list → automatically pick the first one
 	wabas, err := helpers.GetUserWABAs(extendedToken)
 	if err != nil || len(wabas) == 0 {
-		log.Printf("[WA Callback] WABA tidak ditemukan otomatis untuk user=%s, redirect ke manual input: %v", userIDStr, err)
+		log.Printf("[WA Callback] WABA not found automatically for user=%s, redirecting to manual input: %v", userIDStr, err)
 
-		// Bungkus access_token + user context dalam short-lived JWT (15 menit)
-		// agar HTML bisa kirim ke /connect tanpa expose raw token di URL
+		// Wrap access_token + user context in a short-lived JWT (15 minutes)
+		// so the HTML can POST to /connect without exposing the raw token in the URL
 		sessionData := map[string]interface{}{
 			"access_token":  extendedToken,
 			"user_id":       userIDStr,
@@ -607,7 +607,7 @@ func (cont *WhatsAppOAuthContImpl) OAuthCallback(ctx *gin.Context) {
 		}
 		sessionToken, err := helpers.GenerateJWT(cont.JwtKey, 15*time.Minute, sessionData)
 		if err != nil {
-			redirectError("Gagal generate session token")
+			redirectError("Failed to generate session token")
 			return
 		}
 		ctx.Redirect(302, frontendURL+
@@ -617,23 +617,23 @@ func (cont *WhatsAppOAuthContImpl) OAuthCallback(ctx *gin.Context) {
 	}
 	wabaID := wabas[0].ID
 
-	// 6. Ambil nomor telepon dari WABA
+	// 6. Get phone number from WABA
 	phones, err := helpers.GetWABAPhoneNumbers(wabaID, extendedToken)
 	if err != nil || len(phones) == 0 {
-		log.Printf("[WA Callback] tidak ada phone number di WABA=%s: %v", wabaID, err)
-		redirectError("Tidak ditemukan nomor telepon di akun WhatsApp Business")
+		log.Printf("[WA Callback] no phone number found in WABA=%s: %v", wabaID, err)
+		redirectError("No phone number found in WhatsApp Business account")
 		return
 	}
 	phoneNumberID := phones[0].ID
 	phoneNumber := phones[0].DisplayPhoneNumber
 	displayName := phones[0].VerifiedName
 
-	// 7. Subscribe app ke webhook events WABA (non-fatal jika gagal)
+	// 7. Subscribe app to WABA webhook events (non-fatal if it fails)
 	if err := helpers.SubscribeAppToWABA(wabaID, extendedToken); err != nil {
-		log.Printf("[WA Callback] peringatan: gagal subscribe webhook WABA=%s: %v", wabaID, err)
+		log.Printf("[WA Callback] warning: failed to subscribe webhook WABA=%s: %v", wabaID, err)
 	}
 
-	// 8. Simpan koneksi ke DB
+	// 8. Save connection to DB
 	userID, _ := uuid.Parse(userIDStr)
 	now := time.Now()
 	conn := domains.WhatsAppConnection{
@@ -647,18 +647,18 @@ func (cont *WhatsAppOAuthContImpl) OAuthCallback(ctx *gin.Context) {
 		ConnectedAt:   now,
 	}
 	if err := cont.WhatsAppConnectionRepo.Upsert(cont.Db, conn); err != nil {
-		log.Printf("[WA Callback] gagal simpan koneksi schema=%s: %v", tenantSchema, err)
-		redirectError("Gagal menyimpan koneksi")
+		log.Printf("[WA Callback] failed to save connection schema=%s: %v", tenantSchema, err)
+		redirectError("Failed to save connection")
 		return
 	}
 
-	// 9. Sync ke tenant settings agar getWhatsAppClient() langsung bisa pakai
+	// 9. Sync to tenant settings so getWhatsAppClient() can use it immediately
 	cont.syncToTenantSettings(tenantSchema, phoneNumberID, extendedToken)
 	if pin := cont.ensureTenantRegistrationPin(tenantSchema); pin != "" && phoneNumberID != "" {
 		waClient := helpers.NewWhatsAppClient(phoneNumberID, extendedToken)
 		registrationStatus := waRegistrationStatus{Ready: true}
 		if err := waClient.RegisterPhoneNumber(pin); err != nil {
-			log.Printf("[WA Callback] gagal register phone_number_id=%s: %v", phoneNumberID, err)
+			log.Printf("[WA Callback] failed to register phone_number_id=%s: %v", phoneNumberID, err)
 			registrationStatus.Ready = false
 			if helpers.IsWhatsAppRegistrationBlocked(err) {
 				registrationStatus.Message = "Connected, but this number is still attached to another WhatsApp account and cannot send messages yet."
@@ -666,21 +666,21 @@ func (cont *WhatsAppOAuthContImpl) OAuthCallback(ctx *gin.Context) {
 				registrationStatus.Message = "Connected, but the WhatsApp business number is not ready to send messages yet."
 			}
 		} else {
-			log.Printf("[WA Callback] nomor WhatsApp berhasil diregister phone_number_id=%s", phoneNumberID)
+			log.Printf("[WA Callback] WhatsApp number successfully registered phone_number_id=%s", phoneNumberID)
 		}
 		cont.updateRegistrationStatus(tenantSchema, registrationStatus)
 	}
 
-	log.Printf("[WA Callback] ✅ terhubung schema=%s phone=%s waba=%s", tenantSchema, phoneNumber, wabaID)
+	log.Printf("[WA Callback] ✅ connected schema=%s phone=%s waba=%s", tenantSchema, phoneNumber, wabaID)
 
-	// 10. Redirect ke FE dengan info sukses
+	// 10. Redirect to FE with success info
 	ctx.Redirect(302, frontendURL+
 		"?wa_status=connected"+
 		"&phone="+url.QueryEscape(phoneNumber)+
 		"&display_name="+url.QueryEscape(displayName))
 }
 
-// getUserContext mengambil user_id dan tenant_schema dari JWT
+// getUserContext extracts user_id and tenant_schema from the JWT
 func (cont *WhatsAppOAuthContImpl) getUserContext(ctx *gin.Context) (userID, tenantSchema string) {
 	userID, _ = ctx.MustGet("user_id").(string)
 
@@ -695,8 +695,8 @@ func (cont *WhatsAppOAuthContImpl) getUserContext(ctx *gin.Context) (userID, ten
 	return userID, tenantSchema
 }
 
-// syncToTenantSettings menyinkronkan credentials ke tenant setting table
-// agar logika getWhatsAppClient() yang sudah ada tetap berfungsi
+// syncToTenantSettings syncs credentials to the tenant setting table
+// so that existing getWhatsAppClient() logic continues to work
 func (cont *WhatsAppOAuthContImpl) syncToTenantSettings(schema, phoneNumberID, accessToken string) {
 	type settingKV struct {
 		name  string
@@ -716,7 +716,7 @@ func (cont *WhatsAppOAuthContImpl) syncToTenantSettings(schema, phoneNumberID, a
 			s.name, s.value,
 		).Error
 		if err != nil {
-			log.Printf("[WA OAuth] gagal sync setting %s ke schema=%s: %v", s.name, schema, err)
+			log.Printf("[WA OAuth] failed to sync setting %s to schema=%s: %v", s.name, schema, err)
 		}
 	}
 }
@@ -739,7 +739,7 @@ func (cont *WhatsAppOAuthContImpl) ensureTenantRegistrationPin(schema string) st
 		pin,
 	).Error
 	if err != nil {
-		log.Printf("[WA OAuth] gagal simpan registration pin schema=%s: %v", schema, err)
+		log.Printf("[WA OAuth] failed to save registration pin schema=%s: %v", schema, err)
 		return ""
 	}
 
@@ -763,7 +763,7 @@ func (cont *WhatsAppOAuthContImpl) updateRegistrationStatus(schema string, statu
 			s.name, s.value,
 		).Error
 		if err != nil {
-			log.Printf("[WA OAuth] gagal sync status %s ke schema=%s: %v", s.name, schema, err)
+			log.Printf("[WA OAuth] failed to sync status %s to schema=%s: %v", s.name, schema, err)
 		}
 	}
 }
@@ -785,13 +785,13 @@ func (cont *WhatsAppOAuthContImpl) readRegistrationStatus(schema string) waRegis
 	return status
 }
 
-// clearTenantSettings menghapus credentials WhatsApp dari tenant setting table
+// clearTenantSettings clears WhatsApp credentials from the tenant setting table
 func (cont *WhatsAppOAuthContImpl) clearTenantSettings(schema string) {
 	err := cont.Db.Exec(
 		`UPDATE `+schema+`.setting SET value = '', updated_at = NOW()
 		WHERE sub_group_name = 'WhatsApp' AND name IN ('whatsapp-phone-number-id', 'whatsapp-access-token', 'whatsapp-registration-pin', 'whatsapp-ready-to-send', 'whatsapp-status-message')`,
 	).Error
 	if err != nil {
-		log.Printf("[WA OAuth] gagal clear settings untuk schema=%s: %v", schema, err)
+		log.Printf("[WA OAuth] failed to clear settings for schema=%s: %v", schema, err)
 	}
 }

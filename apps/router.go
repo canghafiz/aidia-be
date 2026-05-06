@@ -31,7 +31,7 @@ func NewRouter(r Router) *Router {
 	// Public order detail page (no auth) — used in Telegram order notifications
 	r.Engine.GET("/orders/:schema/:id", r.Dependency.TelegramCont.GetPublicOrderDetail)
 
-	// Setup CORS global — custom middleware agar OPTIONS preflight selalu ditangani
+	// Setup global CORS — custom middleware so OPTIONS preflight is always handled
 	r.Engine.Use(func(ctx *gin.Context) {
 		ctx.Header("Access-Control-Allow-Origin", "*")
 		ctx.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS")
@@ -90,15 +90,17 @@ func NewRouter(r Router) *Router {
 		{
 			settingGroup.GET("/notification", r.Dependency.SettingCont.GetNotification)
 			settingGroup.GET("/integration", r.Dependency.SettingCont.GetIntegration)
-			settingGroup.PATCH("/subgroup-name/:sub_group_name", r.Dependency.SettingCont.UpdateBySubgroupName)
+			settingGroup.PATCH("/subgroup-name", r.Dependency.SettingCont.UpdateBySubgroupName)
 		}
 
-		// AI Prompt settings (per client)
+		// Per-client settings (AI prompts, KDS, etc.)
 		settingClientGroup := generalGroup.Group("client/:client_id/settings").Use(middleware)
 		{
 			settingClientGroup.GET("/ai-prompts", r.Dependency.SettingCont.GetClientAIPrompts)
 			settingClientGroup.GET("/ai-prompts/:section", r.Dependency.SettingCont.GetClientAIPromptSection)
 			settingClientGroup.PATCH("/ai-prompts/:section", r.Dependency.SettingCont.UpdateClientAIPromptSection)
+			settingClientGroup.GET("/kds", r.Dependency.SettingCont.GetClientKDS)
+			settingClientGroup.PUT("/kds", r.Dependency.SettingCont.SetClientKDS)
 		}
 
 		planGroup := generalGroup.Group("plans").Use(middleware)
@@ -126,8 +128,6 @@ func NewRouter(r Router) *Router {
 			{
 				// Webhooks — public, no auth (each gateway has its own signature scheme)
 				platformGroup.POST("/webhook/stripe", r.Dependency.PaymentCont.HandlePlatformWebhookStripe)
-				platformGroup.POST("/webhook/hitpay", r.Dependency.PaymentCont.HandlePlatformWebhookHitPay)
-				platformGroup.GET("/webhook/hitpay", func(c *gin.Context) { c.Status(200) }) // HitPay URL verification ping
 
 				platformAuth := platformGroup.Use(middleware)
 				{
@@ -144,7 +144,6 @@ func NewRouter(r Router) *Router {
 			{
 				// Webhooks — public, no auth
 				clientGroup.POST("/webhook/stripe/:schema", r.Dependency.PaymentCont.HandleClientWebhookStripe)
-				clientGroup.POST("/webhook/hitpay/:schema", r.Dependency.PaymentCont.HandleClientWebhookHitPay)
 
 				clientAuth := clientGroup.Use(middleware)
 				{
@@ -170,6 +169,16 @@ func NewRouter(r Router) *Router {
 			productCategoryGroup.GET("", r.Dependency.ProductCategoryCont.GetAll)
 			productCategoryGroup.GET("/:category_id", r.Dependency.ProductCategoryCont.GetByID)
 			productCategoryGroup.DELETE("/:category_id", r.Dependency.ProductCategoryCont.Delete)
+		}
+
+		// Product Tag
+		productTagGroup := generalGroup.Group("client/:client_id/product-tags").Use(middleware)
+		{
+			productTagGroup.POST("", r.Dependency.ProductTagCont.Create)
+			productTagGroup.PUT("/:tag_id", r.Dependency.ProductTagCont.Update)
+			productTagGroup.GET("", r.Dependency.ProductTagCont.GetAll)
+			productTagGroup.GET("/:tag_id", r.Dependency.ProductTagCont.GetByID)
+			productTagGroup.DELETE("/:tag_id", r.Dependency.ProductTagCont.Delete)
 		}
 
 		// Delivery setting
@@ -289,12 +298,20 @@ func NewRouter(r Router) *Router {
 		// WhatsApp Embedded Signup — public config endpoint (no auth)
 		generalGroup.GET("whatsapp/config", r.Dependency.WhatsAppOAuthCont.GetConfig)
 
-		// WhatsApp connection (butuh auth)
+		// WhatsApp connection (requires auth)
 		whatsappOAuthGroup := generalGroup.Group("client/:client_id/whatsapp").Use(middleware)
 		{
 			whatsappOAuthGroup.POST("/connect", r.Dependency.WhatsAppOAuthCont.Connect)
 			whatsappOAuthGroup.GET("/status", r.Dependency.WhatsAppOAuthCont.Status)
 			whatsappOAuthGroup.DELETE("/disconnect", r.Dependency.WhatsAppOAuthCont.Disconnect)
+		}
+
+		// WhatsApp Whatsmeow (personal number, QR-based)
+		whatsappWhatsmeowGroup := generalGroup.Group("client/:client_id/whatsapp/whatsmeow").Use(middleware)
+		{
+			whatsappWhatsmeowGroup.GET("/qr", r.Dependency.WhatsAppWhatsmeowCont.GetQRStream)
+			whatsappWhatsmeowGroup.GET("/status", r.Dependency.WhatsAppWhatsmeowCont.GetStatus)
+			whatsappWhatsmeowGroup.DELETE("/disconnect", r.Dependency.WhatsAppWhatsmeowCont.Disconnect)
 		}
 
 		// Telegram Webhook (public - no middleware)
@@ -303,8 +320,8 @@ func NewRouter(r Router) *Router {
 			telegramWebhookGroup.POST("/:schema", r.Dependency.TelegramCont.Webhook)
 		}
 
-		// WhatsApp Webhook — Global (satu URL untuk semua tenant)
-		// GET = verifikasi Meta, POST = pesan masuk (routing via phone_number_id)
+		// WhatsApp Webhook — Global (single URL for all tenants)
+		// GET = Meta verification, POST = incoming message (routed via phone_number_id)
 		whatsappWebhookGroup := generalGroup.Group("webhook/whatsapp")
 		{
 			whatsappWebhookGroup.GET("", r.Dependency.WhatsAppCont.VerifyWebhookGlobal)
@@ -319,6 +336,10 @@ func NewRouter(r Router) *Router {
 		{
 			internalGroup.GET("/telegram/:schema/ai-context", r.Dependency.TelegramCont.GetAIContextForSchema)
 			internalGroup.GET("/whatsapp/:schema/ai-context", r.Dependency.WhatsAppCont.GetAIContextForSchema)
+			internalGroup.POST("/guest/:schema/:guest_id/conversation-state", r.Dependency.TelegramCont.UpdateGuestConversationState)
+			internalGroup.POST("/guest/:schema/:guest_id/registration-complete", r.Dependency.TelegramCont.CompleteGuestRegistration)
+			internalGroup.POST("/guest/:schema/:guest_id/wa-conversation-state", r.Dependency.WhatsAppCont.UpdateWhatsAppGuestConversationState)
+			internalGroup.POST("/guest/:schema/:guest_id/wa-registration-complete", r.Dependency.WhatsAppCont.CompleteWhatsAppGuestRegistration)
 		}
 	}
 

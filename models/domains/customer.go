@@ -8,6 +8,8 @@ type Customer struct {
 	Username         *string   `gorm:"column:username"`
 	PhoneCountryCode *string   `gorm:"column:phone_country_code"`
 	PhoneNumber      *string   `gorm:"column:phone_number"`
+	Address          *string   `gorm:"column:address"`
+	PostalCode       *string   `gorm:"column:postal_code"`
 	AccountType      string    `gorm:"column:account_type;not null"`
 	CreatedAt        time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt        time.Time `gorm:"column:updated_at;autoUpdateTime"`

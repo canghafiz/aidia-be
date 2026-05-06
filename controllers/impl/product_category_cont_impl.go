@@ -18,7 +18,7 @@ func NewProductCategoryContImpl(productCategoryServ services.ProductCategoryServ
 }
 
 // Create @Summary      Create Product Category
-// @Description  Buat kategori produk baru
+// @Description  Create a new product category
 // @Tags         Product Category
 // @Accept       json
 // @Produce      json
@@ -56,7 +56,7 @@ func (cont *ProductCategoryContImpl) Create(ctx *gin.Context) {
 }
 
 // Update @Summary      Update Product Category
-// @Description  Update kategori produk berdasarkan ID
+// @Description  Update a product category by ID
 // @Tags         Product Category
 // @Accept       json
 // @Produce      json
@@ -101,7 +101,7 @@ func (cont *ProductCategoryContImpl) Update(ctx *gin.Context) {
 }
 
 // GetAll @Summary      Get All Product Categories
-// @Description  Ambil semua kategori produk, filter berdasarkan visibility
+// @Description  Get all product categories, filtered by visibility
 // @Tags         Product Category
 // @Produce      json
 // @Security     BearerAuth
@@ -137,7 +137,7 @@ func (cont *ProductCategoryContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetByID @Summary      Get Product Category By ID
-// @Description  Ambil detail kategori produk beserta produk yang berelasi
+// @Description  Get product category details along with its associated products
 // @Tags         Product Category
 // @Produce      json
 // @Security     BearerAuth
@@ -175,7 +175,7 @@ func (cont *ProductCategoryContImpl) GetByID(ctx *gin.Context) {
 }
 
 // Delete @Summary      Delete Product Category
-// @Description  Hapus kategori produk berdasarkan ID
+// @Description  Delete a product category by ID
 // @Tags         Product Category
 // @Produce      json
 // @Security     BearerAuth

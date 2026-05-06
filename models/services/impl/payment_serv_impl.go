@@ -73,20 +73,6 @@ func (serv *PaymentServImpl) getKey(schema, subGroupName, name string) (string, 
 	return "", fmt.Errorf("key not found: %s / %s", subGroupName, name)
 }
 
-// activeGateway returns "stripe" or "hitpay" based on the public.setting value.
-// Falls back to "stripe" if the setting is missing.
-func (serv *PaymentServImpl) activeGateway() string {
-	settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, "public", "integration", "Payment Gateway")
-	if err != nil || len(settings) == 0 {
-		return "stripe"
-	}
-	for _, s := range settings {
-		if s.Name == "active-payment-gateway" {
-			return s.Value
-		}
-	}
-	return "stripe"
-}
 
 func (serv *PaymentServImpl) getTenantByToken(accessToken string) (*domains.Tenant, error) {
 	userIDStr, err := helpers.GetUserIdFromToken(accessToken, serv.JwtKey)
@@ -157,64 +143,14 @@ func (serv *PaymentServImpl) buildStripeInvoice(
 	return finalInv.ID, finalInv.HostedInvoiceURL, nil
 }
 
-// buildHitPayPayment creates a HitPay payment request and returns (paymentID, paymentURL, error).
-func (serv *PaymentServImpl) buildHitPayPayment(
-	apiKey string,
-	tenantName, tenantEmail, invoiceNumber, planName, duration string,
-	price float64,
-	tenantPlanID uuid.UUID,
-	sandbox bool,
-) (string, string, error) {
-	redirectURL := os.Getenv("HITPAY_REDIRECT_URL")
-	webhookURL := os.Getenv("HITPAY_PLATFORM_WEBHOOK_URL")
-
-	if redirectURL == "" {
-		return "", "", fmt.Errorf("HITPAY_REDIRECT_URL env not set")
-	}
-	if webhookURL == "" {
-		return "", "", fmt.Errorf("HITPAY_PLATFORM_WEBHOOK_URL env not set")
-	}
-
-	resp, err := helpers.HitPayCreatePayment(apiKey, helpers.HitPayPaymentRequest{
-		Amount:          fmt.Sprintf("%.2f", price),
-		Currency:        "SGD",
-		Email:           tenantEmail,
-		Name:            tenantName,
-		ReferenceNumber: invoiceNumber,
-		RedirectURL:     redirectURL,
-		WebhookURL:      webhookURL,
-		Purpose:         fmt.Sprintf("%s | %s", planName, duration),
-	}, sandbox)
-	if err != nil {
-		return "", "", fmt.Errorf("hitpay payment creation failed: %w", err)
-	}
-
-	log.Printf("[buildHitPayPayment] created: id=%s, url=%s", resp.ID, resp.URL)
-	return resp.ID, resp.URL, nil
-}
 
 // ============================================================
 // PLATFORM — tenant purchases a plan
 // ============================================================
 
-// GetAvailableGateways returns gateway keys that have a non-empty API key configured.
+// GetAvailableGateways returns available payment gateways.
 func (serv *PaymentServImpl) GetAvailableGateways() []string {
-	var available []string
-
-	stripeKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
-	if err == nil && stripeKey != "" && stripeKey != "{stripe-aidia-secret-key}" {
-		available = append(available, "stripe")
-	}
-
-	hitpayKey, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-api-key")
-	if err == nil && hitpayKey != "" {
-		available = append(available, "hitpay")
-	}
-
-	if len(available) == 0 {
-		available = append(available, "stripe") // safe fallback
-	}
-	return available
+	return []string{"stripe"}
 }
 
 func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID uuid.UUID, gateway string) (*paymentRes.CheckoutResponse, error) {
@@ -264,57 +200,27 @@ func (serv *PaymentServImpl) CreatePlatformCheckout(accessToken string, planID u
 		return nil, fmt.Errorf("failed to create invoice")
 	}
 
-	if gateway == "" {
-		gateway = serv.activeGateway()
-	}
+	gateway = "stripe"
 	tenantName := tenant.User.Name
 	tenantEmail := tenant.User.Email
 	duration := paymentRes.FormatDuration(plan.Duration, plan.IsMonth)
 
-	var sessionID, sessionURL string
-
-	switch gateway {
-	case "hitpay":
-		apiKey, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-api-key")
-		if err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("HitPay API key not configured")
-		}
-		sandboxVal, _ := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-sandbox")
-		sandbox := sandboxVal == "true"
-
-		sessionID, sessionURL, err = serv.buildHitPayPayment(
-			apiKey, tenantName, tenantEmail, invoiceNumber, plan.Name, duration,
-			plan.Price, tenantPlan.ID, sandbox,
-		)
-		if err != nil {
-			tx.Rollback()
-			log.Printf("[HitPay].buildHitPayPayment error: %v", err)
-			return nil, fmt.Errorf("failed to create payment")
-		}
-
-	case "stripe":
-		secretKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
-		if err != nil {
-			tx.Rollback()
-			return nil, fmt.Errorf("Stripe secret key not configured")
-		}
-		stripe.Key = secretKey
-		priceInCents := int64(plan.Price * 100)
-
-		sessionID, sessionURL, err = serv.buildStripeInvoice(
-			tenantName, tenantEmail, invoiceNumber, plan.Name, duration,
-			priceInCents, tenantPlan.ID,
-		)
-		if err != nil {
-			tx.Rollback()
-			log.Printf("[Stripe].buildStripeInvoice error: %v", err)
-			return nil, fmt.Errorf("failed to create payment invoice")
-		}
-
-	default:
+	secretKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
+	if err != nil {
 		tx.Rollback()
-		return nil, fmt.Errorf("unsupported payment gateway: %s", gateway)
+		return nil, fmt.Errorf("Stripe secret key not configured")
+	}
+	stripe.Key = secretKey
+	priceInCents := int64(plan.Price * 100)
+
+	sessionID, sessionURL, err := serv.buildStripeInvoice(
+		tenantName, tenantEmail, invoiceNumber, plan.Name, duration,
+		priceInCents, tenantPlan.ID,
+	)
+	if err != nil {
+		tx.Rollback()
+		log.Printf("[Stripe].buildStripeInvoice error: %v", err)
+		return nil, fmt.Errorf("failed to create payment invoice")
 	}
 
 	pending := "pending"
@@ -367,52 +273,25 @@ func (serv *PaymentServImpl) CreatePaymentFromExisting(accessToken string, tenan
 		return nil, fmt.Errorf("payment due date has passed, please create a new invoice")
 	}
 
-	if gateway == "" {
-		gateway = serv.activeGateway()
-	}
+	gateway = "stripe"
 	tenantName := tenant.User.Name
 	tenantEmail := tenant.User.Email
 	duration := paymentRes.FormatDuration(tenantPlan.Duration, tenantPlan.IsMonth)
 
-	var sessionID, sessionURL string
+	secretKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
+	if err != nil {
+		return nil, fmt.Errorf("Stripe secret key not configured")
+	}
+	stripe.Key = secretKey
+	priceInCents := int64(tenantPlan.Price * 100)
 
-	switch gateway {
-	case "hitpay":
-		apiKey, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-api-key")
-		if err != nil {
-			return nil, fmt.Errorf("HitPay API key not configured")
-		}
-		sandboxVal, _ := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-sandbox")
-		sandbox := sandboxVal == "true"
-
-		sessionID, sessionURL, err = serv.buildHitPayPayment(
-			apiKey, tenantName, tenantEmail, tenantPlan.InvoiceNumber,
-			tenantPlan.Plan.Name, duration, tenantPlan.Price, tenantPlan.ID, sandbox,
-		)
-		if err != nil {
-			log.Printf("[HitPay].buildHitPayPayment error: %v", err)
-			return nil, fmt.Errorf("failed to create payment")
-		}
-
-	case "stripe":
-		secretKey, err := serv.getKey("public", "Stripe Aidia", "stripe-aidia-secret-key")
-		if err != nil {
-			return nil, fmt.Errorf("Stripe secret key not configured")
-		}
-		stripe.Key = secretKey
-		priceInCents := int64(tenantPlan.Price * 100)
-
-		sessionID, sessionURL, err = serv.buildStripeInvoice(
-			tenantName, tenantEmail, tenantPlan.InvoiceNumber,
-			tenantPlan.Plan.Name, duration, priceInCents, tenantPlan.ID,
-		)
-		if err != nil {
-			log.Printf("[Stripe].buildStripeInvoice error: %v", err)
-			return nil, fmt.Errorf("failed to create payment invoice")
-		}
-
-	default:
-		return nil, fmt.Errorf("unsupported payment gateway: %s", gateway)
+	sessionID, sessionURL, err := serv.buildStripeInvoice(
+		tenantName, tenantEmail, tenantPlan.InvoiceNumber,
+		tenantPlan.Plan.Name, duration, priceInCents, tenantPlan.ID,
+	)
+	if err != nil {
+		log.Printf("[Stripe].buildStripeInvoice error: %v", err)
+		return nil, fmt.Errorf("failed to create payment invoice")
 	}
 
 	pending := "pending"
@@ -514,42 +393,6 @@ func (serv *PaymentServImpl) HandlePlatformWebhookStripe(payload []byte, signatu
 	return nil
 }
 
-func (serv *PaymentServImpl) HandlePlatformWebhookHitPay(formValues map[string]string) error {
-	salt, err := serv.getKey("public", "HitPay Aidia", "hitpay-aidia-webhook-salt")
-	if err != nil {
-		return err
-	}
-
-	if !helpers.HitPayVerifyWebhook(formValues, salt) {
-		return fmt.Errorf("invalid hitpay webhook signature")
-	}
-
-	status := formValues["status"]
-	referenceNumber := formValues["reference_number"]
-	paymentID := formValues["payment_id"]
-
-	log.Printf("[HitPayWebhook] status=%s reference=%s payment_id=%s", status, referenceNumber, paymentID)
-
-	switch status {
-	case "completed":
-		tenantPlan, err := serv.TenantPlanRepo.GetByPaymentInvoiceID(serv.Db, paymentID)
-		if err != nil {
-			// Try lookup by reference_number (invoice number) as fallback
-			log.Printf("[HitPayWebhook] GetByPaymentInvoiceID failed, trying reference: %v", err)
-			return fmt.Errorf("tenant plan not found for payment_id: %s", paymentID)
-		}
-		return serv.markPlatformPaid(tenantPlan.SubscriptionInvoiceID)
-
-	case "failed":
-		tenantPlan, err := serv.TenantPlanRepo.GetByPaymentInvoiceID(serv.Db, paymentID)
-		if err != nil {
-			return fmt.Errorf("tenant plan not found for payment_id: %s", paymentID)
-		}
-		return serv.markPlatformFailed(tenantPlan.SubscriptionInvoiceID)
-	}
-
-	return nil
-}
 
 // markPlatformPaid activates the tenant plan identified by invoiceID.
 func (serv *PaymentServImpl) markPlatformPaid(invoiceID interface{}) error {
@@ -654,16 +497,8 @@ func (serv *PaymentServImpl) CreateClientCheckout(clientID uuid.UUID, orderID uu
 		return nil, fmt.Errorf("CLIENT_PAYMENT_CANCEL_URL env not set")
 	}
 
-	gateway := serv.activeGateway()
-	switch gateway {
-	case "hitpay":
-		if _, err := serv.getKey(schema, "HitPay Client", "hitpay-client-api-key"); err != nil {
-			return nil, fmt.Errorf("HitPay client API key not configured")
-		}
-	default:
-		if _, err := serv.getKey(schema, "Stripe Client", "stripe-client-secret-key"); err != nil {
-			return nil, fmt.Errorf("Stripe client secret key not configured")
-		}
+	if _, err := serv.getKey(schema, "Stripe Client", "stripe-client-secret-key"); err != nil {
+		return nil, fmt.Errorf("Stripe client secret key not configured")
 	}
 
 	// TODO: implement full order payment flow per gateway
@@ -696,6 +531,14 @@ func (serv *PaymentServImpl) HandleClientWebhookStripe(schema string, payload []
 	}
 
 	switch event.Type {
+	case "checkout.session.completed":
+		sessionID, ok := event.Data.Object["id"].(string)
+		if !ok {
+			return fmt.Errorf("invalid checkout session data")
+		}
+		log.Printf("[ClientStripeWebhook] Checkout completed schema=%s session=%s", schema, sessionID)
+		return serv.markClientPaid(schema, sessionID)
+
 	case "invoice.paid":
 		invoiceID, ok := event.Data.Object["id"].(string)
 		if !ok {
@@ -716,31 +559,6 @@ func (serv *PaymentServImpl) HandleClientWebhookStripe(schema string, payload []
 	return nil
 }
 
-func (serv *PaymentServImpl) HandleClientWebhookHitPay(schema string, formValues map[string]string) error {
-	salt, err := serv.getKey(schema, "HitPay Client", "hitpay-client-webhook-salt")
-	if err != nil {
-		return err
-	}
-
-	if !helpers.HitPayVerifyWebhook(formValues, salt) {
-		return fmt.Errorf("invalid hitpay webhook signature")
-	}
-
-	status := formValues["status"]
-	paymentID := formValues["payment_id"]
-	referenceNumber := formValues["reference_number"]
-
-	log.Printf("[ClientHitPayWebhook] schema=%s status=%s payment_id=%s reference=%s", schema, status, paymentID, referenceNumber)
-
-	switch status {
-	case "completed":
-		return serv.markClientPaid(schema, paymentID)
-	case "failed":
-		return serv.markClientFailed(schema, paymentID)
-	}
-
-	return nil
-}
 
 func (serv *PaymentServImpl) markClientPaid(schema, invoiceID string) error {
 	orderPayment, err := serv.OrderPaymentRepo.GetByPaymentInvoiceID(serv.Db, schema, invoiceID)

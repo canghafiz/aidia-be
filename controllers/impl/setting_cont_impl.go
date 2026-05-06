@@ -29,7 +29,7 @@ func NewSettingContImpl(settingServ services.SettingServ, userRepo repositories.
 
 // GetNotification godoc
 // @Summary      Get Notification Settings
-// @Description  Ambil data setting notifikasi
+// @Description  Get notification settings data
 // @Tags         Settings
 // @Produce      json
 // @Success      200  {object}  helpers.ApiResponse{data=setting.GroupResponse}
@@ -61,7 +61,7 @@ func (cont *SettingContImpl) GetNotification(context *gin.Context) {
 
 // GetIntegration godoc
 // @Summary      Get Integration Settings
-// @Description  Ambil data setting integrasi. SuperAdmin mendapat semua data, Client hanya mendapat data Telegram
+// @Description  Get integration settings data. SuperAdmin receives all data; Client only receives Telegram data
 // @Tags         Settings
 // @Produce      json
 // @Success      200  {object}  helpers.ApiResponse{data=setting.GroupResponse}
@@ -93,7 +93,7 @@ func (cont *SettingContImpl) GetIntegration(context *gin.Context) {
 
 // UpdateBySubgroupName godoc
 // @Summary      Update Settings by Subgroup
-// @Description  Update value setting berdasarkan subgroup name
+// @Description  Update setting values by subgroup name
 // @Tags         Settings
 // @Accept       json
 // @Produce      json
@@ -106,7 +106,7 @@ func (cont *SettingContImpl) GetIntegration(context *gin.Context) {
 // @Router       /settings/subgroup-name/{sub_group_name} [patch]
 func (cont *SettingContImpl) UpdateBySubgroupName(context *gin.Context) {
 	jwtToken := helpers.GetJwtToken(context)
-	subGroupName := context.Param("sub_group_name")
+	subGroupName := context.Query("sub_group_name")
 
 	request := req.UpdateBySubgroupRequest{}
 	errParse := helpers.ReadFromRequestBody(context, &request)
@@ -171,7 +171,7 @@ func (cont *SettingContImpl) UpdateTelegramBotToken(context *gin.Context) {
 		return
 	}
 
-	// Update setting dan register webhook
+	// Update setting and register webhook
 	err = cont.SettingServ.UpdateTelegramBotToken(jwtToken, clientID, request.BotToken)
 	if err != nil {
 		exceptions.ErrorHandler(context, err)
@@ -221,7 +221,16 @@ func (cont *SettingContImpl) GetClientAIPrompts(context *gin.Context) {
 		return
 	}
 
-	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{Success: true, Code: 200, Data: prompts})
+	response := req.AIPromptsResponse{
+		Product:          prompts["product"],
+		Delivery:         prompts["delivery"],
+		Operational:      prompts["operational"],
+		AboutStore:       prompts["about-store"],
+		Faq:              prompts["faq"],
+		StoreOperational: prompts["store-operational"],
+	}
+
+	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{Success: true, Code: 200, Data: response})
 }
 
 // GetClientAIPromptSection godoc
@@ -273,6 +282,76 @@ func (cont *SettingContImpl) GetClientAIPromptSection(context *gin.Context) {
 	})
 }
 
+// GetClientKDS godoc
+// @Summary      Get KDS status for a client
+// @Description  Returns whether Kitchen Display System is enabled for the given client. Accessible by SuperAdmin and the Client itself.
+// @Tags         Settings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID"
+// @Success      200  {object}  helpers.ApiResponse{data=map[string]interface{}}
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/kds [get]
+func (cont *SettingContImpl) GetClientKDS(ctx *gin.Context) {
+	jwt := helpers.GetJwtToken(ctx)
+
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	enabled, err := cont.SettingServ.GetClientKDS(jwt, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	helpers.WriteToResponseBody(ctx, 200, helpers.ApiResponse{
+		Success: true, Code: 200,
+		Data: map[string]interface{}{"kds_enabled": enabled, "client_id": clientID},
+	})
+}
+
+// SetClientKDS godoc
+// @Summary      Enable or disable KDS for a client
+// @Description  SuperAdmin sets whether KDS is enabled for the given client. Body: {"enabled": true/false}
+// @Tags         Settings
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID"
+// @Param        request    body  object  true  "KDS toggle"
+// @Success      200  {object}  helpers.ApiResponse
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/settings/kds [put]
+func (cont *SettingContImpl) SetClientKDS(ctx *gin.Context) {
+	jwt := helpers.GetJwtToken(ctx)
+
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := helpers.ReadFromRequestBody(ctx, &body); err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	if err := cont.SettingServ.SetClientKDS(jwt, clientID, body.Enabled); err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	helpers.WriteToResponseBody(ctx, 200, helpers.ApiResponse{Success: true, Code: 200, Data: nil})
+}
+
 // UpdateClientAIPromptSection godoc
 // @Summary      Update AI Prompt by Section
 // @Description  Update AI prompt for a specific section. Valid sections: product, delivery, operational, about-store, faq
@@ -319,9 +398,55 @@ func (cont *SettingContImpl) UpdateClientAIPromptSection(context *gin.Context) {
 		return
 	}
 
+	if section == "operational" {
+		cont.syncBotStateFromOperationalHours(schema, request.Prompt)
+	}
+
 	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{
 		Success: true, Code: 200,
 		Data: map[string]string{"message": fmt.Sprintf("AI prompt for section '%s' updated", section)},
 	})
 }
 
+// syncBotStateFromOperationalHours immediately sets manual-mode and bot-enabled for
+// both Telegram and WhatsApp based on whether the current time falls inside hoursJSON.
+// Called after saving the "operational" AI prompt section so the change takes effect
+// without waiting for the scheduler's next minute tick.
+func (cont *SettingContImpl) syncBotStateFromOperationalHours(schema, hoursJSON string) {
+	if hoursJSON == "" {
+		return
+	}
+
+	var timezone string
+	cont.Db.Raw(fmt.Sprintf(
+		`SELECT value FROM %s.setting WHERE group_name = 'integration' AND sub_group_name = 'Telegram' AND name = 'timezone' LIMIT 1`,
+		schema,
+	)).Scan(&timezone)
+	if timezone == "" {
+		timezone = "Asia/Singapore"
+	}
+
+	withinHours, _ := helpers.IsWithinOperationalHours(hoursJSON, timezone)
+	manualMode := "true"
+	botEnabled := "false"
+	if withinHours {
+		manualMode = "false"
+		botEnabled = "true"
+	}
+
+	for _, platform := range []string{"Telegram", "WhatsApp"} {
+		cont.Db.Exec(fmt.Sprintf(
+			`INSERT INTO %s.setting (group_name, sub_group_name, name, value)
+			 VALUES ('integration', $1, 'manual-mode', $2)
+			 ON CONFLICT (sub_group_name, name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+			schema,
+		), platform, manualMode)
+
+		cont.Db.Exec(fmt.Sprintf(
+			`INSERT INTO %s.setting (group_name, sub_group_name, name, value)
+			 VALUES ('integration', $1, 'bot-enabled', $2)
+			 ON CONFLICT (sub_group_name, name) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+			schema,
+		), platform, botEnabled)
+	}
+}

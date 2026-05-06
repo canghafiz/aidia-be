@@ -26,7 +26,7 @@ func NewPaymentContImpl(paymentServ services.PaymentServ) *PaymentContImpl {
 
 // GetAvailableGateways godoc
 // @Summary      Get Available Payment Gateways
-// @Description  Returns a list of payment gateways that are configured and available for platform checkout (e.g. stripe, hitpay)
+// @Description  Returns a list of payment gateways that are configured and available for platform checkout
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
@@ -47,12 +47,12 @@ func (cont *PaymentContImpl) GetAvailableGateways(ctx *gin.Context) {
 }
 
 // CreatePlatformCheckout @Summary      Create Platform Checkout
-// @Description  Buat sesi pembayaran untuk pembelian plan (platform Aidia). Gunakan query param `gateway` untuk memilih gateway (stripe / hitpay). Jika kosong, pakai gateway default dari konfigurasi.
+// @Description  Create a payment session for purchasing a plan (Aidia platform). Uses Stripe as the payment gateway.
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
 // @Param        plan_id  path      string true  "Plan ID"
-// @Param        gateway  query     string false "Payment gateway: stripe | hitpay (default: active gateway)"
+// @Param        gateway  query     string false "Payment gateway (reserved, always stripe)"
 // @Success      200      {object}  helpers.ApiResponse{data=payment.CheckoutResponse}
 // @Failure      400      {object}  helpers.ApiResponse
 // @Failure      401      {object}  helpers.ApiResponse
@@ -89,12 +89,12 @@ func (cont *PaymentContImpl) CreatePlatformCheckout(ctx *gin.Context) {
 }
 
 // CreatePaymentFromExisting @Summary      Create Payment From Existing Invoice
-// @Description  Buat ulang sesi pembayaran untuk invoice yang belum dibayar. Gunakan query param `gateway` untuk memilih gateway (stripe / hitpay).
+// @Description  Recreate a payment session for an unpaid invoice. Uses Stripe as the payment gateway.
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
 // @Param        invoice_id  path      string true  "Invoice ID"
-// @Param        gateway     query     string false "Payment gateway: stripe | hitpay (default: active gateway)"
+// @Param        gateway     query     string false "Payment gateway (reserved, always stripe)"
 // @Success      200         {object}  helpers.ApiResponse{data=payment.CheckoutResponse}
 // @Failure      400         {object}  helpers.ApiResponse
 // @Failure      401         {object}  helpers.ApiResponse
@@ -131,7 +131,7 @@ func (cont *PaymentContImpl) CreatePaymentFromExisting(ctx *gin.Context) {
 }
 
 // GetPlatformInvoices @Summary      Get Platform Invoices
-// @Description  Ambil semua invoice pembelian plan milik tenant yang sedang login dengan pagination
+// @Description  Get all plan purchase invoices for the currently logged-in tenant with pagination
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
@@ -165,7 +165,7 @@ func (cont *PaymentContImpl) GetPlatformInvoices(ctx *gin.Context) {
 }
 
 // GetPlatformInvoiceByID @Summary      Get Platform Invoice By ID
-// @Description  Ambil detail invoice pembelian plan berdasarkan invoice ID
+// @Description  Get plan purchase invoice details by invoice ID
 // @Tags         Payment Platform
 // @Produce      json
 // @Security     BearerAuth
@@ -238,53 +238,13 @@ func (cont *PaymentContImpl) HandlePlatformWebhookStripe(ctx *gin.Context) {
 	}
 }
 
-// HandlePlatformWebhookHitPay godoc
-// @Summary      Handle Platform HitPay Webhook
-// @Description  Receives HitPay webhook events for Aidia platform payments (status: completed / failed). No authentication required — validated via HMAC-SHA256 in the form body.
-// @Tags         Payment Platform
-// @Accept       application/x-www-form-urlencoded
-// @Produce      json
-// @Param        payment_id        formData  string  true  "HitPay Payment ID"
-// @Param        payment_request_id formData  string  true  "HitPay Payment Request ID"
-// @Param        status            formData  string  true  "Payment status (completed / failed)"
-// @Param        reference_number  formData  string  false "Reference number (invoice number)"
-// @Param        amount            formData  string  false "Payment amount"
-// @Param        currency          formData  string  false "Currency"
-// @Param        hmac              formData  string  true  "HMAC-SHA256 signature"
-// @Success      200  {object}  helpers.ApiResponse
-// @Failure      400  {object}  helpers.ApiResponse
-// @Failure      500  {object}  helpers.ApiResponse
-// @Router       /payments/platform/webhook/hitpay [post]
-func (cont *PaymentContImpl) HandlePlatformWebhookHitPay(ctx *gin.Context) {
-	if err := ctx.Request.ParseForm(); err != nil {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("failed to parse form: %w", err))
-		return
-	}
-
-	formValues := make(map[string]string)
-	for k, v := range ctx.Request.PostForm {
-		if len(v) > 0 {
-			formValues[k] = v[0]
-		}
-	}
-
-	if errServ := cont.PaymentServ.HandlePlatformWebhookHitPay(formValues); errServ != nil {
-		exceptions.ErrorHandler(ctx, errServ)
-		return
-	}
-
-	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{Success: true, Code: 200})
-	if errResponse != nil {
-		exceptions.ErrorHandler(ctx, errResponse)
-	}
-}
 
 // ============================================================
 // CLIENT
 // ============================================================
 
-// CreateClientCheckout @Summary      [BELUM DIGUNAKAN] Create Client Checkout
-// @Description  [BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik tenant (Stripe per tenant). Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.
+// CreateClientCheckout @Summary      [NOT YET IN USE] Create Client Checkout
+// @Description  [NOT YET IN USE] Create a Stripe payment session for a tenant order (per-tenant Stripe). This endpoint is not yet active as the tenant order payment feature is still under development.
 // @Tags         Payment Client
 // @Produce      json
 // @Security     BearerAuth
@@ -327,8 +287,8 @@ func (cont *PaymentContImpl) CreateClientCheckout(ctx *gin.Context) {
 	}
 }
 
-// GetClientInvoices @Summary      [BELUM DIGUNAKAN] Get Client Invoices
-// @Description  [BELUM DIGUNAKAN] Ambil semua invoice order milik tenant yang sedang login dengan pagination. Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.
+// GetClientInvoices @Summary      [NOT YET IN USE] Get Client Invoices
+// @Description  [NOT YET IN USE] Get all order invoices for the currently logged-in tenant with pagination. This endpoint is not yet active as the tenant order payment feature is still under development.
 // @Tags         Payment Client
 // @Produce      json
 // @Security     BearerAuth
@@ -409,50 +369,3 @@ func (cont *PaymentContImpl) HandleClientWebhookStripe(ctx *gin.Context) {
 	}
 }
 
-// HandleClientWebhookHitPay godoc
-// @Summary      Handle Client HitPay Webhook
-// @Description  Receives HitPay webhook events for a specific tenant's order payments (status: completed / failed). No authentication required — validated via HMAC-SHA256 in the form body.
-// @Tags         Payment Client
-// @Accept       application/x-www-form-urlencoded
-// @Produce      json
-// @Param        schema             path      string  true  "Tenant Schema"
-// @Param        payment_id         formData  string  true  "HitPay Payment ID"
-// @Param        payment_request_id formData  string  true  "HitPay Payment Request ID"
-// @Param        status             formData  string  true  "Payment status (completed / failed)"
-// @Param        reference_number   formData  string  false "Reference number"
-// @Param        amount             formData  string  false "Payment amount"
-// @Param        currency           formData  string  false "Currency"
-// @Param        hmac               formData  string  true  "HMAC-SHA256 signature"
-// @Success      200  {object}  helpers.ApiResponse
-// @Failure      400  {object}  helpers.ApiResponse
-// @Failure      500  {object}  helpers.ApiResponse
-// @Router       /payments/client/{client_id}/webhook/hitpay/{schema} [post]
-func (cont *PaymentContImpl) HandleClientWebhookHitPay(ctx *gin.Context) {
-	schema := ctx.Param("schema")
-	if schema == "" {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("missing schema param"))
-		return
-	}
-
-	if err := ctx.Request.ParseForm(); err != nil {
-		exceptions.ErrorHandler(ctx, fmt.Errorf("failed to parse form: %w", err))
-		return
-	}
-
-	formValues := make(map[string]string)
-	for k, v := range ctx.Request.PostForm {
-		if len(v) > 0 {
-			formValues[k] = v[0]
-		}
-	}
-
-	if errServ := cont.PaymentServ.HandleClientWebhookHitPay(schema, formValues); errServ != nil {
-		exceptions.ErrorHandler(ctx, errServ)
-		return
-	}
-
-	errResponse := helpers.WriteToResponseBody(ctx, http.StatusOK, helpers.ApiResponse{Success: true, Code: 200})
-	if errResponse != nil {
-		exceptions.ErrorHandler(ctx, errResponse)
-	}
-}

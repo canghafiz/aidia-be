@@ -73,9 +73,13 @@ func (serv *SettingServImpl) GetIntegration(accessToken string) (*setting.GroupR
 	var result []domains.Setting
 	var errResult error
 
-	if *role == "Client" {
+	switch *role {
+	case "SuperAdmin":
+		// Payment integration only — reads Stripe Aidia keys from public schema
+		result, errResult = serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, "public", "integration", "Stripe Aidia")
+	case "Client":
 		result, errResult = serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "Telegram")
-	} else {
+	default:
 		result, errResult = serv.SettingRepo.GetByGroupName(serv.Db, schema, "integration")
 	}
 
@@ -106,7 +110,7 @@ func (serv *SettingServImpl) UpdateBySubgroupName(accessToken, subGroupName stri
 		return fmt.Errorf("failed to update setting")
 	}
 
-	// Auto-register webhook Stripe kalau client update Stripe Client secret key
+	// Auto-register Stripe webhook when a client updates their Stripe Client secret key
 	if *role == "Client" && subGroupName == "Stripe Client" {
 		secretKey := ""
 		for _, s := range settings {
@@ -117,12 +121,12 @@ func (serv *SettingServImpl) UpdateBySubgroupName(accessToken, subGroupName stri
 		}
 
 		if secretKey != "" {
-			// Hapus webhook lama dulu sebelum register baru
+			// Delete old webhook before registering new one
 			serv.deleteExistingWebhook(secretKey, schema)
 
 			webhookSecret, err := serv.registerStripeWebhook(secretKey, schema)
 			if err != nil {
-				// Log error tapi tidak fail — secret key sudah tersimpan
+				// Log error but do not fail — secret key is already saved
 				log.Printf("[SettingServ] registerStripeWebhook error: %v", err)
 			} else {
 				webhookSettings := []domains.Setting{
@@ -187,6 +191,7 @@ func (serv *SettingServImpl) registerStripeWebhook(secretKey, schema string) (st
 	params := &stripe.WebhookEndpointParams{
 		URL: stripe.String(webhookURL),
 		EnabledEvents: []*string{
+			stripe.String("checkout.session.completed"),
 			stripe.String("invoice.paid"),
 			stripe.String("invoice.payment_failed"),
 		},
@@ -299,20 +304,18 @@ func (serv *SettingServImpl) GetByGroupAndSubGroupName(db *gorm.DB, schema, grou
 	return result, nil
 }
 
-func (serv *SettingServImpl) UpdateBySubGroupNameForSchema(db *gorm.DB, schema, subGroupName, name, value string) error {
-	// Direct SQL update
-	return db.Table(schema + ".setting").
-		Where("sub_group_name = ? AND name = ?", subGroupName, name).
-		Update("value", value).Error
+func (serv *SettingServImpl) UpdateBySubGroupNameForSchema(db *gorm.DB, schema, groupName, subGroupName, name, value string) error {
+	return serv.SettingRepo.UpsertByName(db, schema, groupName, subGroupName, name, value)
 }
 
 // aiPromptSectionMap maps API section name to (sub_group_name, setting name)
 var aiPromptSectionMap = map[string][2]string{
-	"product":     {"AI Product", "ai-product-prompt"},
-	"delivery":    {"AI Delivery", "ai-delivery-prompt"},
-	"operational": {"AI Operational", "ai-operational-prompt"},
-	"about-store": {"AI About Store", "ai-about-store-prompt"},
-	"faq":         {"AI FAQ", "ai-faq-prompt"},
+	"product":            {"AI Product", "ai-product-prompt"},
+	"delivery":           {"AI Delivery", "ai-delivery-prompt"},
+	"operational":        {"AI Operational", "ai-operational-prompt"},
+	"about-store":        {"AI About Store", "ai-about-store-prompt"},
+	"faq":                {"AI FAQ", "ai-faq-prompt"},
+	"store-operational":  {"Store Operational", "store-operational-hours"},
 }
 
 // GetAIPrompts returns all 4 AI prompt sections for a tenant schema (no auth required — used internally)
@@ -345,33 +348,45 @@ func (serv *SettingServImpl) UpdateAIPromptSection(accessToken, schema, section,
 
 	meta, ok := aiPromptSectionMap[section]
 	if !ok {
-		return fmt.Errorf("invalid section '%s': valid values are product, delivery, about-store, faq", section)
+		return fmt.Errorf("invalid section '%s': valid sections are product, delivery, operational, about-store, faq, store-operational", section)
 	}
 
-	existing, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "ai_prompt", meta[0])
+	return serv.SettingRepo.UpsertByName(serv.Db, schema, "ai_prompt", meta[0], meta[1], prompt)
+}
+
+func (serv *SettingServImpl) GetClientKDS(accessToken string, clientID uuid.UUID) (bool, error) {
+	_, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin", "Client"})
+	if err != nil || !ok {
+		return false, fmt.Errorf("access denied")
+	}
+
+	schema, err := helpers.GetSchema(serv.Db, impl.NewUserRepoImpl(), clientID)
 	if err != nil {
-		return fmt.Errorf("failed to query settings: %w", err)
+		return false, fmt.Errorf("client not found")
 	}
 
-	found := false
-	for _, s := range existing {
-		if s.Name == meta[1] {
-			found = true
-			break
-		}
+	s, err := serv.SettingRepo.GetByName(serv.Db, schema, "features", "KDS", "kds_enabled")
+	if err != nil {
+		return false, nil
+	}
+	return s.Value == "true", nil
+}
+
+func (serv *SettingServImpl) SetClientKDS(accessToken string, clientID uuid.UUID, enabled bool) error {
+	role, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin"})
+	if err != nil || !ok || *role != "SuperAdmin" {
+		return fmt.Errorf("access denied: superadmin only")
 	}
 
-	if found {
-		return serv.SettingRepo.UpdateBySubGroupName(serv.Db, schema, []domains.Setting{
-			{GroupName: "ai_prompt", SubgroupName: meta[0], Name: meta[1], Value: prompt},
-		})
+	schema, err := helpers.GetSchema(serv.Db, impl.NewUserRepoImpl(), clientID)
+	if err != nil {
+		return fmt.Errorf("client not found")
 	}
 
-	return serv.SettingRepo.Create(serv.Db, schema, domains.Setting{
-		GroupName:    "ai_prompt",
-		SubgroupName: meta[0],
-		Name:         meta[1],
-		Value:        prompt,
-	})
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	return serv.SettingRepo.UpsertByName(serv.Db, schema, "features", "KDS", "kds_enabled", value)
 }
 

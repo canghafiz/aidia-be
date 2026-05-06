@@ -109,8 +109,8 @@ func ToSubsResponse(
 		tp := u.TenantPlan
 		plan := tp.Plan
 
-		// used_tokens = selisih dari total_tokens awal (unlimited = -1, jadi hitung dari cost saja)
-		// Di sini kita simpan used_tokens sebagai nilai positif dari penggunaan
+		// used_tokens = difference from the initial total_tokens (unlimited = -1, so derive from cost)
+		// Stored as a positive value representing total consumption
 		usedTokens := u.UsedTokens()
 		totalUsedTokens += usedTokens
 		totalCost += u.TotalCost

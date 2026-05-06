@@ -20,7 +20,7 @@ func NewOrderContImpl(orderServ services.OrderServ) *OrderContImpl {
 }
 
 // Create @Summary      Create Order
-// @Description  Buat order baru. Customer dicek berdasarkan phone number — jika sudah ada, data customer lama dipakai. Jika belum ada, customer baru dibuat.
+// @Description  Create a new order. The customer is looked up by phone number — if already exists, existing customer data is used; otherwise a new customer is created.
 // @Tags         Order
 // @Accept       json
 // @Produce      json
@@ -61,7 +61,7 @@ func (cont *OrderContImpl) Create(ctx *gin.Context) {
 }
 
 // GetAll @Summary      Get All Orders
-// @Description  Ambil semua order dengan pagination
+// @Description  Get all orders with pagination
 // @Tags         Order
 // @Produce      json
 // @Security     BearerAuth
@@ -97,7 +97,7 @@ func (cont *OrderContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetByID @Summary      Get Order By ID
-// @Description  Ambil detail order beserta customer, produk, dan payment
+// @Description  Get order details including customer, products, and payment
 // @Tags         Order
 // @Produce      json
 // @Security     BearerAuth

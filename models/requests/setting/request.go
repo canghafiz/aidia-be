@@ -4,13 +4,14 @@ import "backend/models/domains"
 
 // UpdateBySubgroupRequest represents request to update settings by subgroup
 type UpdateBySubgroupRequest struct {
-	Settings []UpdateSettingItem `json:"settings" validate:"required,min=1,dive"`
+	GroupName string             `json:"group_name"`
+	Settings  []UpdateSettingItem `json:"settings" validate:"required,min=1,dive"`
 }
 
 // UpdateSettingItem represents a single setting to update
 type UpdateSettingItem struct {
 	Name  string `json:"name" validate:"required"`
-	Value string `json:"value" validate:"required"`
+	Value string `json:"value"`
 }
 
 // UpdateAIPromptRequest represents request body for updating an AI prompt section
@@ -27,13 +28,14 @@ type AIPromptSectionResponse struct {
 	Prompt string `json:"prompt" example:"We are a restaurant open Sunday to Friday."`
 }
 
-// AIPromptsResponse represents all 5 AI prompt sections
+// AIPromptsResponse represents all AI prompt sections
 type AIPromptsResponse struct {
-	Product     string `json:"product"     example:"Show product name, price, photo, and description."`
-	Delivery    string `json:"delivery"    example:"We deliver to the following zones."`
-	Operational string `json:"operational" example:"Open Sunday - Friday, 07:00 - 17:00."`
-	AboutStore  string `json:"about_store" example:"We are a restaurant located in Jakarta."`
-	Faq         string `json:"faq"         example:"1. Payment via Stripe. 2. Order expires in 15 minutes."`
+	Product          string `json:"product"           example:"Show product name, price, photo, and description."`
+	Delivery         string `json:"delivery"          example:"We deliver to the following zones."`
+	Operational      string `json:"operational"       example:"Open Sunday - Friday, 07:00 - 17:00."`
+	AboutStore       string `json:"about_store"       example:"We are a restaurant located in Jakarta."`
+	Faq              string `json:"faq"               example:"1. Payment via Stripe. 2. Order expires in 15 minutes."`
+	StoreOperational string `json:"store_operational" example:"{\"monday\":{\"start\":\"09:00\",\"end\":\"21:00\",\"closed\":false}}"`
 }
 
 // ToSettings converts request to domain settings
@@ -41,6 +43,7 @@ func (r *UpdateBySubgroupRequest) ToSettings(subGroupName string) []domains.Sett
 	settings := make([]domains.Setting, len(r.Settings))
 	for i, s := range r.Settings {
 		settings[i] = domains.Setting{
+			GroupName:    r.GroupName,
 			SubgroupName: subGroupName,
 			Name:         s.Name,
 			Value:        s.Value,

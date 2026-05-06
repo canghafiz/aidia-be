@@ -50,6 +50,17 @@ func (repo *GuestRepoImpl) FindByUsername(db *gorm.DB, schema, username string) 
 	return &guest, nil
 }
 
+func (repo *GuestRepoImpl) FindByPhone(db *gorm.DB, schema, phone string) (*domains.Guest, error) {
+	var guest domains.Guest
+	err := db.Table(schema+"."+guest.TableName()).
+		Where("phone = ?", phone).
+		First(&guest).Error
+	if err != nil {
+		return nil, err
+	}
+	return &guest, nil
+}
+
 func (repo *GuestRepoImpl) FindAllByTenantID(db *gorm.DB, schema string, tenantID uuid.UUID, platform string, pagination domains.Pagination) ([]domains.Guest, int64, error) {
 	var guests []domains.Guest
 	var total int64

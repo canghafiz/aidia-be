@@ -18,7 +18,7 @@ func NewDeliverySettingContImpl(deliverySettingServ services.DeliverySettingServ
 }
 
 // Create @Summary      Create Delivery Setting
-// @Description  Buat pengaturan delivery baru
+// @Description  Create a new delivery setting
 // @Tags         Delivery Setting
 // @Accept       json
 // @Produce      json
@@ -56,7 +56,7 @@ func (cont *DeliverySettingContImpl) Create(ctx *gin.Context) {
 }
 
 // Update @Summary      Update Delivery Setting
-// @Description  Update pengaturan delivery berdasarkan sub group name
+// @Description  Update a delivery setting by sub group name
 // @Tags         Delivery Setting
 // @Accept       json
 // @Produce      json
@@ -97,7 +97,7 @@ func (cont *DeliverySettingContImpl) Update(ctx *gin.Context) {
 }
 
 // GetAll @Summary      Get All Delivery Settings
-// @Description  Ambil semua pengaturan delivery
+// @Description  Get all delivery settings
 // @Tags         Delivery Setting
 // @Produce      json
 // @Security     BearerAuth
@@ -127,7 +127,7 @@ func (cont *DeliverySettingContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetBySubGroupName @Summary      Get Delivery Setting By Sub Group Name
-// @Description  Ambil detail pengaturan delivery berdasarkan subgroup name
+// @Description  Get delivery setting details by subgroup name
 // @Tags         Delivery Setting
 // @Produce      json
 // @Security     BearerAuth
@@ -161,7 +161,7 @@ func (cont *DeliverySettingContImpl) GetBySubGroupName(ctx *gin.Context) {
 }
 
 // Delete @Summary      Delete Delivery Setting
-// @Description  Hapus pengaturan delivery berdasarkan sub group name
+// @Description  Delete a delivery setting by sub group name
 // @Tags         Delivery Setting
 // @Produce      json
 // @Security     BearerAuth

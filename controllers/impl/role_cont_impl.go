@@ -17,7 +17,7 @@ func NewRoleContImpl(roleServ services.RoleServ) *RoleContImpl {
 }
 
 // GetRoles @Summary      Get All Roles
-// @Description  Ambil semua data role
+// @Description  Retrieve all role data
 // @Tags         Roles
 // @Produce      json
 // @Success      200  {object}  helpers.ApiResponse{data=[]domains.Roles}

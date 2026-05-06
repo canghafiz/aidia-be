@@ -17,8 +17,8 @@ func NewApprovalCont(approvalServ services.ApprovalServ) *ApprovalCont {
 	return &ApprovalCont{ApprovalServ: approvalServ}
 }
 
-// Approval @Summary      Approve User (Hanya untuk role SuperAdmin)
-// @Description  Approve user berdasarkan approval_id (Hanya untuk role SuperAdmin)
+// Approval @Summary      Approve User (SuperAdmin only)
+// @Description  Approve a user by approval_id (SuperAdmin only)
 // @Tags         Approval
 // @Produce      json
 // @Security     BearerAuth
@@ -55,7 +55,7 @@ func (cont *ApprovalCont) Approval(context *gin.Context) {
 }
 
 // GetAll @Summary      Get All Approval Logs
-// @Description  Ambil semua approval logs dengan pagination (Hanya untuk role SuperAdmin)
+// @Description  Get all approval logs with pagination (SuperAdmin only)
 // @Tags         Approval
 // @Produce      json
 // @Security     BearerAuth
@@ -87,8 +87,8 @@ func (cont *ApprovalCont) GetAll(context *gin.Context) {
 	}
 }
 
-// Delete @Summary      Delete Approval Log (Hanya untuk role SuperAdmin)ear
-// @Description  Hapus approval log berdasarkan approval_id (Hanya untuk role SuperAdmin)
+// Delete @Summary      Delete Approval Log (SuperAdmin only)
+// @Description  Delete an approval log by approval_id (SuperAdmin only)
 // @Tags         Approval
 // @Produce      json
 // @Security     BearerAuth

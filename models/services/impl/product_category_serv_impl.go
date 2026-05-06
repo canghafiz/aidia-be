@@ -54,7 +54,7 @@ func (serv *ProductCategoryServImpl) Create(userID uuid.UUID, request product_ca
 		return err
 	}
 
-	// Cek nama sudah ada
+	// Check if name already exists
 	existing, _ := serv.ProductCategoryRepo.GetByName(serv.Db, schema, request.Name)
 	if existing != nil {
 		return fmt.Errorf("category name already exist")
@@ -89,7 +89,7 @@ func (serv *ProductCategoryServImpl) Update(userID uuid.UUID, id uuid.UUID, requ
 		return fmt.Errorf("product category not found")
 	}
 
-	// Cek nama sudah ada tapi bukan milik ID yang sama
+	// Check if name already exists but belongs to a different ID
 	existing, _ := serv.ProductCategoryRepo.GetByName(serv.Db, schema, request.Name)
 	if existing != nil && existing.ID != id {
 		return fmt.Errorf("category name already exist")

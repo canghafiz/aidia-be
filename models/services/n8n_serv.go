@@ -20,5 +20,5 @@ type N8NAction struct {
 }
 
 type N8NServ interface {
-	ProcessMessage(schema, guestID, chatID, message, prompt string, history []domains.GuestMessage) (*N8NResponse, error)
+	ProcessMessage(schema, guestID, chatID, message, prompt string, history []domains.GuestMessage, isRegistered bool, clientID, guestUsername, storeName string, convState map[string]interface{}) (*N8NResponse, error)
 }

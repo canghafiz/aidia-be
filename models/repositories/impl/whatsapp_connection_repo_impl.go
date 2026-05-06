@@ -30,7 +30,7 @@ func (repo *WhatsAppConnectionRepoImpl) FindByUserID(db *gorm.DB, userID uuid.UU
 	return &conn, nil
 }
 
-// Upsert menyimpan atau memperbarui koneksi berdasarkan user_id
+// Upsert saves or updates a connection record based on user_id
 func (repo *WhatsAppConnectionRepoImpl) Upsert(db *gorm.DB, conn domains.WhatsAppConnection) error {
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}},

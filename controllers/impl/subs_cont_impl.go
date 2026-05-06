@@ -17,9 +17,9 @@ func NewSubsContImpl(subsServ services.SubsServ) *SubsContImpl {
 }
 
 // GetCurrentSubs @Summary      Get Current Subscription
-// @Description  Ambil status subscription aktif tenant yang sedang login.
-// @Description  Mengembalikan info plan aktif (single/multiple), token usage, dan pesan status.
-// @Description  Jika tidak ada plan aktif, kembalikan info free plan usage.
+// @Description  Get the active subscription status of the currently logged-in tenant.
+// @Description  Returns active plan info (single/multiple), token usage, and status message.
+// @Description  If no active plan exists, returns free plan usage info.
 // @Tags         Subscription
 // @Produce      json
 // @Security     BearerAuth

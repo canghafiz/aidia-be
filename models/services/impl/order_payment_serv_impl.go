@@ -110,10 +110,14 @@ func (serv *OrderPaymentServImpl) UpdateStatus(accessToken string, clientID uuid
 		return err
 	}
 
-	_, err = serv.OrderPaymentRepo.GetByID(serv.Db, schema, id)
+	payment, err := serv.OrderPaymentRepo.GetByID(serv.Db, schema, id)
 	if err != nil {
 		log.Printf("[OrderPaymentRepo].GetByID error: %v", err)
 		return fmt.Errorf("order payment not found")
+	}
+
+	if payment.PaymentMethod != "cash_on_delivery" {
+		return fmt.Errorf("payment status can only be updated manually for Cash on Delivery orders")
 	}
 
 	if err := serv.OrderPaymentRepo.UpdateStatus(serv.Db, schema, id, request.Status); err != nil {

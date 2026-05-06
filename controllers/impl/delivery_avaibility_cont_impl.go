@@ -18,7 +18,7 @@ func NewDeliveryAvailabilitySettingContImpl(serv services.DeliveryAvailabilitySe
 }
 
 // Create @Summary      Create Delivery Availability Setting
-// @Description  Buat pengaturan ketersediaan delivery baru, field type=available/not available
+// @Description  Create a new delivery availability setting, field type=available/not available
 // @Tags         Delivery Availability Setting
 // @Accept       json
 // @Produce      json
@@ -56,7 +56,7 @@ func (cont *DeliveryAvailabilitySettingContImpl) Create(ctx *gin.Context) {
 }
 
 // Update @Summary      Update Delivery Availability Setting
-// @Description  Update pengaturan ketersediaan delivery berdasarkan sub group name, field type=available/not available
+// @Description  Update a delivery availability setting by sub group name, field type=available/not available
 // @Tags         Delivery Availability Setting
 // @Accept       json
 // @Produce      json
@@ -97,7 +97,7 @@ func (cont *DeliveryAvailabilitySettingContImpl) Update(ctx *gin.Context) {
 }
 
 // GetAll @Summary      Get All Delivery Availability Settings
-// @Description  Ambil semua pengaturan ketersediaan delivery beserta nama delivery yang berelasi
+// @Description  Get all delivery availability settings along with their associated delivery names
 // @Tags         Delivery Availability Setting
 // @Produce      json
 // @Security     BearerAuth
@@ -127,7 +127,7 @@ func (cont *DeliveryAvailabilitySettingContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetBySubGroupName @Summary      Get Delivery Availability Setting By Sub Group Name
-// @Description  Ambil detail pengaturan ketersediaan delivery berdasarkan sub group name
+// @Description  Get delivery availability setting details by sub group name
 // @Tags         Delivery Availability Setting
 // @Produce      json
 // @Security     BearerAuth
@@ -161,7 +161,7 @@ func (cont *DeliveryAvailabilitySettingContImpl) GetBySubGroupName(ctx *gin.Cont
 }
 
 // Delete @Summary      Delete Delivery Availability Setting
-// @Description  Hapus pengaturan ketersediaan delivery berdasarkan sub group name
+// @Description  Delete a delivery availability setting by sub group name
 // @Tags         Delivery Availability Setting
 // @Produce      json
 // @Security     BearerAuth

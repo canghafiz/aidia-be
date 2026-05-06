@@ -23,6 +23,7 @@ type ProductServImpl struct {
 	UserRepo            repositories.UsersRepo
 	ProductRepo         repositories.ProductRepo
 	DeliverySettingRepo repositories.DeliverySettingRepo
+	ProductTagRepo      repositories.ProductTagRepo
 	FileServ            services.FileServ
 }
 
@@ -32,6 +33,7 @@ func NewProductServImpl(
 	userRepo repositories.UsersRepo,
 	productRepo repositories.ProductRepo,
 	deliverySettingRepo repositories.DeliverySettingRepo,
+	productTagRepo repositories.ProductTagRepo,
 	fileServ services.FileServ,
 ) *ProductServImpl {
 	return &ProductServImpl{
@@ -40,6 +42,7 @@ func NewProductServImpl(
 		UserRepo:            userRepo,
 		ProductRepo:         productRepo,
 		DeliverySettingRepo: deliverySettingRepo,
+		ProductTagRepo:      productTagRepo,
 		FileServ:            fileServ,
 	}
 }
@@ -149,6 +152,19 @@ func (serv *ProductServImpl) Create(userID uuid.UUID, request reqProduct.CreateP
 		}
 	}
 
+	if len(request.TagIDs) > 0 {
+		var tagDtos []domains.ProductTagDto
+		for _, tagID := range request.TagIDs {
+			tagDtos = append(tagDtos, domains.ProductTagDto{ProductID: product.ID, TagID: tagID})
+		}
+		if err := serv.ProductRepo.CreateTagDtos(tx, schema, tagDtos); err != nil {
+			tx.Rollback()
+			serv.rollbackFiles(uploadedFiles)
+			log.Printf("[ProductRepo].CreateTagDtos error: %v", err)
+			return fmt.Errorf("failed to create product tags")
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
 		serv.rollbackFiles(uploadedFiles)
@@ -247,13 +263,33 @@ func (serv *ProductServImpl) Update(userID uuid.UUID, productID uuid.UUID, reque
 		}
 	}
 
+	if err := serv.ProductRepo.DeleteTagDtosByProductID(tx, schema, productID); err != nil {
+		tx.Rollback()
+		serv.rollbackFiles(uploadedFiles)
+		log.Printf("[ProductRepo].DeleteTagDtosByProductID error: %v", err)
+		return fmt.Errorf("failed to delete old tags")
+	}
+
+	if len(request.TagIDs) > 0 {
+		var tagDtos []domains.ProductTagDto
+		for _, tagID := range request.TagIDs {
+			tagDtos = append(tagDtos, domains.ProductTagDto{ProductID: productID, TagID: tagID})
+		}
+		if err := serv.ProductRepo.CreateTagDtos(tx, schema, tagDtos); err != nil {
+			tx.Rollback()
+			serv.rollbackFiles(uploadedFiles)
+			log.Printf("[ProductRepo].CreateTagDtos error: %v", err)
+			return fmt.Errorf("failed to create new tags")
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
 		serv.rollbackFiles(uploadedFiles)
 		return fmt.Errorf("failed to commit transaction")
 	}
 
-	// Hapus file lama dari storage setelah commit berhasil
+	// Delete old files from storage after successful commit
 	if len(images) > 0 {
 		for _, img := range existingProduct.Images {
 			if errDel := serv.FileServ.DeleteFile(img.Image); errDel != nil {
@@ -281,9 +317,10 @@ func (serv *ProductServImpl) GetAll(userID uuid.UUID, pg domains.Pagination) (*p
 		return nil, fmt.Errorf("failed to get products")
 	}
 
-	// Build delivery map dan categories map
+	// Build delivery map, categories map, and tags map
 	deliveryMap := map[string]*domains.DeliverySetting{}
 	categoriesMap := map[string][]domains.ProductCategory{}
+	tagsMap := map[string][]domains.ProductTag{}
 
 	for _, p := range products {
 		deliveryID := p.DeliveryID.String()
@@ -297,9 +334,16 @@ func (serv *ProductServImpl) GetAll(userID uuid.UUID, pg domains.Pagination) (*p
 			categories = []domains.ProductCategory{}
 		}
 		categoriesMap[p.ID.String()] = categories
+
+		tags, err := serv.ProductRepo.GetTagsByProductID(serv.Db, schema, p.ID)
+		if err != nil {
+			log.Printf("[ProductRepo].GetTagsByProductID error: %v", err)
+			tags = []domains.ProductTag{}
+		}
+		tagsMap[p.ID.String()] = tags
 	}
 
-	result := resProduct.ToProductPaginationResponse(products, deliveryMap, categoriesMap, total, pg.Page, pg.Limit)
+	result := resProduct.ToProductPaginationResponse(products, deliveryMap, categoriesMap, tagsMap, total, pg.Page, pg.Limit)
 	return &result, nil
 }
 
@@ -327,7 +371,13 @@ func (serv *ProductServImpl) GetByID(userID uuid.UUID, productID uuid.UUID) (*re
 		categories = []domains.ProductCategory{}
 	}
 
-	response := resProduct.ToProductResponse(*product, delivery, categories)
+	tags, err := serv.ProductRepo.GetTagsByProductID(serv.Db, schema, productID)
+	if err != nil {
+		log.Printf("[ProductRepo].GetTagsByProductID error: %v", err)
+		tags = []domains.ProductTag{}
+	}
+
+	response := resProduct.ToProductResponse(*product, delivery, categories, tags)
 	return &response, nil
 }
 
@@ -361,6 +411,12 @@ func (serv *ProductServImpl) Delete(userID uuid.UUID, productID uuid.UUID) error
 		tx.Rollback()
 		log.Printf("[ProductRepo].DeleteCategoryDtosByProductID error: %v", err)
 		return fmt.Errorf("failed to delete product categories")
+	}
+
+	if err := serv.ProductRepo.DeleteTagDtosByProductID(tx, schema, productID); err != nil {
+		tx.Rollback()
+		log.Printf("[ProductRepo].DeleteTagDtosByProductID error: %v", err)
+		return fmt.Errorf("failed to delete product tags")
 	}
 
 	if err := serv.ProductRepo.Delete(tx, schema, productID); err != nil {

@@ -19,7 +19,7 @@ func NewPlanContImpl(planServ services.PlanServ) *PlanContImpl {
 }
 
 // Create @Summary      Create Plan
-// @Description  Buat plan baru (Hanya untuk SuperAdmin)
+// @Description  Create a new plan (SuperAdmin only)
 // @Tags         Plan
 // @Accept       json
 // @Produce      json
@@ -56,7 +56,7 @@ func (cont *PlanContImpl) Create(context *gin.Context) {
 }
 
 // Update @Summary      Update Plan
-// @Description  Update plan berdasarkan plan_id (Hanya untuk SuperAdmin)
+// @Description  Update a plan by plan_id (SuperAdmin only)
 // @Tags         Plan
 // @Accept       json
 // @Produce      json
@@ -100,7 +100,7 @@ func (cont *PlanContImpl) Update(context *gin.Context) {
 }
 
 // ToggleIsActive @Summary      Toggle Plan Active Status
-// @Description  Toggle status aktif plan berdasarkan plan_id (Hanya untuk SuperAdmin)
+// @Description  Toggle the active status of a plan by plan_id (SuperAdmin only)
 // @Tags         Plan
 // @Produce      json
 // @Security     BearerAuth
@@ -136,7 +136,7 @@ func (cont *PlanContImpl) ToggleIsActive(context *gin.Context) {
 }
 
 // GetAll @Summary      Get All Plans
-// @Description  Ambil semua plan dengan pagination
+// @Description  Get all plans with pagination
 // @Tags         Plan
 // @Produce      json
 // @Security     BearerAuth
@@ -169,7 +169,7 @@ func (cont *PlanContImpl) GetAll(context *gin.Context) {
 }
 
 // GetById @Summary      Get Plan By ID
-// @Description  Ambil data plan berdasarkan plan_id
+// @Description  Get plan data by plan_id
 // @Tags         Plan
 // @Produce      json
 // @Security     BearerAuth
@@ -206,7 +206,7 @@ func (cont *PlanContImpl) GetById(context *gin.Context) {
 }
 
 // Delete @Summary      Delete Plan
-// @Description  Hapus plan berdasarkan plan_id (Hanya untuk SuperAdmin)
+// @Description  Delete a plan by plan_id (SuperAdmin only)
 // @Tags         Plan
 // @Produce      json
 // @Security     BearerAuth

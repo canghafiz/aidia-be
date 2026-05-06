@@ -27,6 +27,7 @@ type ChatServImpl struct {
 	UserRepo         repositories.UsersRepo
 	SettingRepo      repositories.SettingRepo
 	CustomerRepo     repositories.CustomerRepo
+	WhatsmeowHub     *helpers.WhatsmeowHub
 }
 
 func NewChatServImpl(
@@ -37,6 +38,7 @@ func NewChatServImpl(
 	userRepo repositories.UsersRepo,
 	settingRepo repositories.SettingRepo,
 	customerRepo repositories.CustomerRepo,
+	whatsmeowHub *helpers.WhatsmeowHub,
 ) *ChatServImpl {
 	return &ChatServImpl{
 		Db:               db,
@@ -46,6 +48,7 @@ func NewChatServImpl(
 		UserRepo:         userRepo,
 		SettingRepo:      settingRepo,
 		CustomerRepo:     customerRepo,
+		WhatsmeowHub:     whatsmeowHub,
 	}
 }
 
@@ -85,28 +88,34 @@ func (serv *ChatServImpl) getTelegramBotToken(schema string) (string, error) {
 	return "", fmt.Errorf("telegram bot token is not configured")
 }
 
-func (serv *ChatServImpl) getWhatsAppClient(schema string) (*helpers.WhatsAppClient, error) {
+// getWhatsAppSender returns a WhatsAppSender for the given schema.
+// Prefers Meta Cloud API when configured; falls back to whatsmeow when connected.
+// Returns (sender, isWhatsmeow, error).
+func (serv *ChatServImpl) getWhatsAppSender(schema string) (helpers.WhatsAppSender, bool, error) {
 	settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "WhatsApp")
-	if err != nil || len(settings) == 0 {
-		return nil, fmt.Errorf("whatsapp integration is not configured for this account")
-	}
-
-	phoneNumberID := ""
-	accessToken := ""
-	for _, s := range settings {
-		switch s.Name {
-		case "whatsapp-phone-number-id":
-			phoneNumberID = s.Value
-		case "whatsapp-access-token":
-			accessToken = s.Value
+	if err == nil && len(settings) > 0 {
+		phoneNumberID := ""
+		accessToken := ""
+		for _, s := range settings {
+			switch s.Name {
+			case "whatsapp-phone-number-id":
+				phoneNumberID = s.Value
+			case "whatsapp-token":
+				accessToken = s.Value
+			}
+		}
+		if phoneNumberID != "" && accessToken != "" {
+			return helpers.NewWhatsAppClient(phoneNumberID, accessToken), false, nil
 		}
 	}
 
-	if phoneNumberID == "" || accessToken == "" {
-		return nil, fmt.Errorf("whatsapp integration is incomplete for this account")
+	if serv.WhatsmeowHub != nil {
+		if sender := serv.WhatsmeowHub.GetSender(schema); sender != nil {
+			return sender, true, nil
+		}
 	}
 
-	return helpers.NewWhatsAppClient(phoneNumberID, accessToken), nil
+	return nil, false, fmt.Errorf("whatsapp integration is not configured for this account")
 }
 
 func (serv *ChatServImpl) getWhatsAppRegistrationPin(schema string) string {
@@ -331,7 +340,7 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 	}
 
 	if platform == "whatsapp" {
-		waClient, err := serv.getWhatsAppClient(schema)
+		sender, isWhatsmeow, err := serv.getWhatsAppSender(schema)
 		if err != nil {
 			return err
 		}
@@ -343,35 +352,50 @@ func (serv *ChatServImpl) SendManualReply(accessToken string, clientID, guestID 
 		if chatID == "" {
 			return fmt.Errorf("whatsapp guest chat id is missing")
 		}
-
-		if err := waClient.SendMessage(chatID, message); err != nil {
-			log.Printf("[ChatServ] SendManualReply WhatsApp send error guest=%s: %v", guestID, err)
-			if helpers.IsWhatsAppRecipientNotRegistered(err) {
-				return fmt.Errorf("recipient number is not registered on WhatsApp")
+		// For Whatsmeow, use the full JID stored at onboarding time so LID
+		// accounts (whose JID ends in @lid rather than @s.whatsapp.net) are
+		// reached correctly. Falls back to chatID (phone number) if not set.
+		if isWhatsmeow {
+			if jid, ok := guest.Sosmed["jid"].(string); ok && jid != "" {
+				chatID = jid
 			}
-			if helpers.IsWhatsAppBusinessNotRegistered(err) {
-				pin := serv.ensureWhatsAppRegistrationPin(schema)
-				if pin == "" {
-					return fmt.Errorf("whatsapp business phone number is connected but not registered yet")
+		}
+
+		sendErr := sender.SendMessage(chatID, message)
+		if sendErr != nil && !isWhatsmeow {
+			if waClient, ok := sender.(*helpers.WhatsAppClient); ok {
+				log.Printf("[ChatServ] SendManualReply WhatsApp send error guest=%s: %v", guestID, sendErr)
+				if helpers.IsWhatsAppRecipientNotRegistered(sendErr) {
+					return fmt.Errorf("recipient number is not registered on WhatsApp")
 				}
-				log.Printf("[ChatServ] attempting WhatsApp phone registration for schema=%s phone_number_id=%s", schema, waClient.PhoneNumberID)
-				if regErr := waClient.RegisterPhoneNumber(pin); regErr != nil {
-					log.Printf("[ChatServ] WhatsApp registration failed schema=%s: %v", schema, regErr)
-					return fmt.Errorf("whatsapp business phone number is connected but not registered yet")
-				}
-				if retryErr := waClient.SendMessage(chatID, message); retryErr != nil {
-					log.Printf("[ChatServ] SendManualReply WhatsApp retry send error guest=%s: %v", guestID, retryErr)
-					if helpers.IsWhatsAppRecipientNotRegistered(retryErr) {
-						return fmt.Errorf("recipient number is not registered on WhatsApp")
-					}
-					if helpers.IsWhatsAppBusinessNotRegistered(retryErr) {
+				if helpers.IsWhatsAppBusinessNotRegistered(sendErr) {
+					pin := serv.ensureWhatsAppRegistrationPin(schema)
+					if pin == "" {
 						return fmt.Errorf("whatsapp business phone number is connected but not registered yet")
 					}
-					return fmt.Errorf("failed to send WhatsApp message: %w", retryErr)
+					log.Printf("[ChatServ] attempting WhatsApp phone registration for schema=%s phone_number_id=%s", schema, waClient.PhoneNumberID)
+					if regErr := waClient.RegisterPhoneNumber(pin); regErr != nil {
+						log.Printf("[ChatServ] WhatsApp registration failed schema=%s: %v", schema, regErr)
+						return fmt.Errorf("whatsapp business phone number is connected but not registered yet")
+					}
+					retryErr := waClient.SendMessage(chatID, message)
+					if retryErr != nil {
+						log.Printf("[ChatServ] SendManualReply WhatsApp retry send error guest=%s: %v", guestID, retryErr)
+						if helpers.IsWhatsAppRecipientNotRegistered(retryErr) {
+							return fmt.Errorf("recipient number is not registered on WhatsApp")
+						}
+						if helpers.IsWhatsAppBusinessNotRegistered(retryErr) {
+							return fmt.Errorf("whatsapp business phone number is connected but not registered yet")
+						}
+						return fmt.Errorf("failed to send WhatsApp message: %w", retryErr)
+					}
+					sendErr = nil
 				}
-			} else {
-				return fmt.Errorf("failed to send WhatsApp message: %w", err)
 			}
+		}
+		if sendErr != nil {
+			log.Printf("[ChatServ] SendManualReply WhatsApp send error guest=%s: %v", guestID, sendErr)
+			return fmt.Errorf("failed to send WhatsApp message: %w", sendErr)
 		}
 	}
 
@@ -434,7 +458,7 @@ func (serv *ChatServImpl) SendTemplateMessage(accessToken string, clientID, gues
 		return fmt.Errorf("guest not found")
 	}
 
-	waClient, err := serv.getWhatsAppClient(schema)
+	sender, _, err := serv.getWhatsAppSender(schema)
 	if err != nil {
 		return err
 	}
@@ -447,7 +471,7 @@ func (serv *ChatServImpl) SendTemplateMessage(accessToken string, clientID, gues
 		return fmt.Errorf("whatsapp guest chat id is missing")
 	}
 
-	if err := waClient.SendTemplateMessage(chatID, templateName, languageCode, bodyParams); err != nil {
+	if err := sender.SendTemplateMessage(chatID, templateName, languageCode, bodyParams); err != nil {
 		log.Printf("[ChatServ] SendTemplateMessage WhatsApp send error guest=%s: %v", guestID, err)
 		return err
 	}

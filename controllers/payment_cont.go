@@ -9,10 +9,8 @@ type PaymentCont interface {
 	GetPlatformInvoiceByID(ctx *gin.Context)
 	GetAvailableGateways(ctx *gin.Context)
 	HandlePlatformWebhookStripe(ctx *gin.Context)
-	HandlePlatformWebhookHitPay(ctx *gin.Context)
 
 	CreateClientCheckout(ctx *gin.Context)
 	GetClientInvoices(ctx *gin.Context)
 	HandleClientWebhookStripe(ctx *gin.Context)
-	HandleClientWebhookHitPay(ctx *gin.Context)
 }

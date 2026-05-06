@@ -35,7 +35,7 @@ func NewKitchenOrderContImpl(
 }
 
 // GetDisplay @Summary      Get Kitchen Display
-// @Description  Ambil semua order di kitchen display berdasarkan status
+// @Description  Get all orders in the kitchen display filtered by status
 // @Tags         Kitchen Display
 // @Produce      json
 // @Security     BearerAuth
@@ -105,48 +105,48 @@ func (cont *KitchenOrderContImpl) Stream(ctx *gin.Context) {
 		return
 	}
 
-	// Resolve schema dari clientID
+	// Resolve schema from clientID
 	user, err := cont.UserRepo.GetByUserId(cont.Db, clientID)
 	if err != nil {
 		exceptions.ErrorHandler(ctx, fmt.Errorf("user not found"))
 		return
 	}
 
-	// Gunakan TenantSchema yang sudah normalized
+	// Use normalized TenantSchema
 	if user.TenantSchema == nil || *user.TenantSchema == "" {
 		exceptions.ErrorHandler(ctx, fmt.Errorf("tenant schema not found"))
 		return
 	}
 	schema := helpers.NormalizeSchema(*user.TenantSchema)
 
-	// Ambil data awal
+	// Fetch initial data
 	result, err := cont.KitchenOrderServ.GetDisplay(accessToken, clientID)
 	if err != nil {
 		exceptions.ErrorHandler(ctx, err)
 		return
 	}
 
-	// Set SSE headers dengan CORS yang benar
+	// Set SSE headers with correct CORS
 	ctx.Header("Access-Control-Allow-Origin", "*")
-	ctx.Header("Access-Control-Allow-Credentials", "false") // harus false kalau Allow-Origin: *
+	ctx.Header("Access-Control-Allow-Credentials", "false") // must be false when Allow-Origin: *
 	ctx.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
 	ctx.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Requested-With, ngrok-skip-browser-warning")
 	ctx.Header("Access-Control-Expose-Headers", "Content-Type")
-	ctx.Header("ngrok-skip-browser-warning", "true") // skip ngrok interstitial page
+	ctx.Header("ngrok-skip-browser-warning", "true") // skip the ngrok interstitial page
 	ctx.Header("Content-Type", "text/event-stream")
 	ctx.Header("Cache-Control", "no-cache, no-store, must-revalidate")
 	ctx.Header("Connection", "keep-alive")
 	ctx.Header("X-Accel-Buffering", "no")
 	ctx.Header("Transfer-Encoding", "chunked")
 
-	// Subscribe ke hub pakai schema
+	// Subscribe to hub using schema
 	h := hub.GetKitchenHub()
 	ch := h.Subscribe(schema)
 	defer func() {
 		h.Unsubscribe(schema, ch)
 	}()
 
-	// Kirim data awal
+	// Send initial data
 	initEvent := resKitchen.KitchenSSEEvent{
 		Type: "init",
 		Data: result,
@@ -162,7 +162,7 @@ func (cont *KitchenOrderContImpl) Stream(ctx *gin.Context) {
 	}
 	ctx.Writer.Flush()
 
-	// Listen update atau disconnect
+	// Listen for updates or disconnect
 	clientGone := ctx.Request.Context().Done()
 	for {
 		select {

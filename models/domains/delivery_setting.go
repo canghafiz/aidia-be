@@ -1,12 +1,18 @@
 package domains
 
-import "github.com/google/uuid"
+import (
+	"strconv"
+
+	"github.com/google/uuid"
+)
 
 type DeliverySetting struct {
 	SubGroupName string
 	Name         string
 	IsVisible    bool
 	Description  string
+	DeliveryType string
+	Charge       float64
 }
 
 func ToDeliverySetting(settings []Setting) []DeliverySetting {
@@ -28,6 +34,12 @@ func ToDeliverySetting(settings []Setting) []DeliverySetting {
 			grouped[s.SubgroupName].IsVisible = s.Value == "true"
 		case "description":
 			grouped[s.SubgroupName].Description = s.Value
+		case "delivery_type":
+			grouped[s.SubgroupName].DeliveryType = s.Value
+		case "charge":
+			if v, err := strconv.ParseFloat(s.Value, 64); err == nil {
+				grouped[s.SubgroupName].Charge = v
+			}
 		}
 	}
 

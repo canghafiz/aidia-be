@@ -65,7 +65,7 @@ func (serv *UsersServImpl) Login(request user.LoginRequest) (*res.LoginResponse,
 		return nil, fmt.Errorf("password invalid")
 	}
 
-	// Generate access token (JWT) dengan claims lengkap
+	// Generate access token (JWT) with full claims
 	claims := map[string]interface{}{
 		"user_id":       findUser.UserID.String(),
 		"username":      findUser.Username,
@@ -75,7 +75,7 @@ func (serv *UsersServImpl) Login(request user.LoginRequest) (*res.LoginResponse,
 		"tenant_schema": findUser.TenantSchema,
 	}
 
-	// Tambah tenant_id jika user adalah Client
+	// Add tenant_id if the user is a Client
 	if findUser.Tenant != nil && findUser.Tenant.TenantID != uuid.Nil {
 		claims["tenant_id"] = findUser.Tenant.TenantID.String()
 	}
@@ -195,7 +195,7 @@ func (serv *UsersServImpl) CreateSuperAdmin(request user.CreateSuperAdminRequest
 }
 
 func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUserRequest) error {
-	// ── Phase 1: Semua validasi sebelum apapun ──
+	// ── Phase 1: All validation before anything else ──
 	role, ok, err := helpers.GetUserRoleFromToken(accessToken, serv.JwtKey, []string{"SuperAdmin", "Admin"})
 	if err != nil || !ok {
 		return err
@@ -225,7 +225,7 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 
 	isClient := roleData.Name == "Client"
 
-	// Normalize schema — lowercase, spasi dan strip jadi underscore
+	// Normalize schema — lowercase, spaces and special chars become underscores
 	normalizedSchema := helpers.NormalizeSchema(model.Username)
 
 	dropSchema := func() {
@@ -284,7 +284,7 @@ func (serv *UsersServImpl) CreateUser(accessToken string, request user.CreateUse
 	}
 
 	if isClient {
-		// Simpan normalized schema ke tenant_schema field
+		// Save normalized schema to tenant_schema field
 		saved.TenantSchema = &normalizedSchema
 		if err := serv.UserRepo.UpdateTenantSchema(tx, *saved); err != nil {
 			rollback()

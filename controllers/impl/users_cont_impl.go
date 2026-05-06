@@ -19,7 +19,7 @@ func NewUsersContImpl(usersService services.UsersServ) *UsersContImpl {
 }
 
 // Login @Summary      Login
-// @Description  Login menggunakan username atau email beserta password
+// @Description  Login using username or email along with password
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -56,7 +56,7 @@ func (cont *UsersContImpl) Login(context *gin.Context) {
 }
 
 // ChangePw @Summary      Change Password
-// @Description  Ganti password user yang sedang login
+// @Description  Change the password of the currently logged-in user
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -96,7 +96,7 @@ func (cont *UsersContImpl) ChangePw(context *gin.Context) {
 }
 
 // Me @Summary      Get Current User
-// @Description  Ambil data user yang sedang login beserta tenant dan business profile
+// @Description  Get the currently logged-in user's data along with tenant and business profile
 // @Tags         Auth
 // @Produce      json
 // @Security     BearerAuth
@@ -126,7 +126,7 @@ func (cont *UsersContImpl) Me(context *gin.Context) {
 }
 
 // CheckSuperAdminExist @Summary      Check SuperAdmin Exist
-// @Description  Cek apakah SuperAdmin sudah ada di sistem (jika true === ada, tidak perlu panggil api create super admin), dipanggil pertama kali sebelum login
+// @Description  Check whether a SuperAdmin already exists in the system (if true, no need to call the create SuperAdmin API). Called once before login.
 // @Tags         Auth
 // @Produce      json
 // @Success      200  {object}  helpers.ApiResponse{data=bool}
@@ -153,7 +153,7 @@ func (cont *UsersContImpl) CheckSuperAdminExist(context *gin.Context) {
 }
 
 // CreateSuperAdmin @Summary      Create SuperAdmin
-// @Description  Buat akun SuperAdmin, hanya bisa dilakukan sekali
+// @Description  Create a SuperAdmin account, can only be done once
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
@@ -189,7 +189,7 @@ func (cont *UsersContImpl) CreateSuperAdmin(context *gin.Context) {
 }
 
 // CreateUser @Summary      Create User
-// @Description  Buat user baru role admin / client, untuk data role id didapetin dari manggil api roles
+// @Description  Create a new user with role admin / client. The role ID is obtained by calling the roles API.
 // @Tags         Users
 // @Accept       json
 // @Produce      json
@@ -227,7 +227,7 @@ func (cont *UsersContImpl) CreateUser(context *gin.Context) {
 }
 
 // UpdateProfileClient @Summary      Update Profile Client
-// @Description  Update profile user login role client berdasarkan user_id
+// @Description  Update the profile of a logged-in user with the client role by user_id
 // @Tags         Users
 // @Accept       json
 // @Produce      json
@@ -273,7 +273,7 @@ func (cont *UsersContImpl) UpdateProfileClient(context *gin.Context) {
 }
 
 // UpdateProfileNonClient @Summary      Update Profile Non Client
-// @Description  Update profile user login role yang bukan client berdasarkan user_id
+// @Description  Update the profile of a logged-in user with a non-client role by user_id
 // @Tags         Users
 // @Accept       json
 // @Produce      json
@@ -319,7 +319,7 @@ func (cont *UsersContImpl) UpdateProfileNonClient(context *gin.Context) {
 }
 
 // EditUserData @Summary      Edit User Data
-// @Description  Edit user data lain berdasarkan user_id
+// @Description  Edit other user data by user_id
 // @Tags         Users
 // @Accept       json
 // @Produce      json
@@ -365,7 +365,7 @@ func (cont *UsersContImpl) EditUserData(context *gin.Context) {
 }
 
 // GetByUserId @Summary      Get User By ID
-// @Description  Ambil data user berdasarkan user_id
+// @Description  Get user data by user_id
 // @Tags         Users
 // @Produce      json
 // @Param        user_id  path      string true "User ID"
@@ -401,7 +401,7 @@ func (cont *UsersContImpl) GetByUserId(context *gin.Context) {
 }
 
 // GetUsers @Summary      Get All Users
-// @Description  Ambil semua user dengan pagination
+// @Description  Get all users with pagination
 // @Tags         Users
 // @Produce      json
 // @Security     BearerAuth
@@ -436,7 +436,7 @@ func (cont *UsersContImpl) GetUsers(context *gin.Context) {
 }
 
 // GetClients    @Summary      Get All Users role Client
-// @Description  Ambil semua user role client dengan pagination
+// @Description  Get all users with the client role, with pagination
 // @Tags         Users
 // @Produce      json
 // @Security     BearerAuth
@@ -469,7 +469,7 @@ func (cont *UsersContImpl) GetClients(context *gin.Context) {
 }
 
 // FilterUsers @Summary      Filter Users
-// @Description  Filter user berdasarkan name, email, dan role dengan pagination
+// @Description  Filter users by name, email, and role with pagination
 // @Tags         Users
 // @Produce      json
 // @Security     BearerAuth
@@ -508,7 +508,7 @@ func (cont *UsersContImpl) FilterUsers(context *gin.Context) {
 }
 
 // DeleteByUserId @Summary      Delete User
-// @Description  Hapus user berdasarkan user_id
+// @Description  Delete a user by user_id
 // @Tags         Users
 // @Produce      json
 // @Security     BearerAuth

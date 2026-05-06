@@ -35,7 +35,7 @@ func ToInvoiceResponse(tp domains.TenantPlan) InvoiceResponse {
 		paymentStatus = "Paid"
 	}
 
-	// ServiceStatus dari plan_status field
+	// ServiceStatus from the plan_status field
 	serviceStatus := tp.PlanStatus
 	if serviceStatus == "" {
 		serviceStatus = "Inactive"

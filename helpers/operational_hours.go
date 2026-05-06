@@ -3,6 +3,8 @@ package helpers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 )
 
@@ -19,49 +21,56 @@ type OperationalHours struct {
 
 // DayHours represents open/close time for a single day
 type DayHours struct {
-	Start string `json:"start"`
-	End   string `json:"end"`
+	Start  string `json:"start"`
+	End    string `json:"end"`
+	Closed bool   `json:"closed"`
 }
 
-// IsWithinOperationalHours checks if current time is within operational hours
+// IsWithinOperationalHours checks if current time is within operational hours.
+// hoursJSON must be a structured JSON object produced by OperationalHoursField.
+// Returns (true, nil) when no config set. Returns (false, nil) on parse failure — fail-safe.
 func IsWithinOperationalHours(hoursJSON string, timezone string) (bool, error) {
 	if hoursJSON == "" {
-		return true, nil // Default always open
+		return true, nil // no config = always open
 	}
 
 	var hours OperationalHours
-	err := json.Unmarshal([]byte(hoursJSON), &hours)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse operational hours: %w", err)
+	if err := json.Unmarshal([]byte(hoursJSON), &hours); err != nil {
+		// Not valid JSON (e.g. old plain-text format) — fail safe: treat as closed
+		log.Printf("[OperationalHours] Cannot parse JSON: %v", err)
+		return false, nil
 	}
 
-	// Get current time in specified timezone
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		loc = time.UTC // Fallback to UTC
+		loc = time.UTC
 	}
 	now := time.Now().In(loc)
 
-	// Get day of week
 	dayHours := getDayHours(&hours, now.Weekday())
 
-	// Parse start and end time
-	startTime, err := time.ParseInLocation("15:04", dayHours.Start, loc)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse start time: %w", err)
+	// Explicitly closed today
+	if dayHours.Closed {
+		return false, nil
 	}
 
-	endTime, err := time.ParseInLocation("15:04", dayHours.End, loc)
-	if err != nil {
-		return false, fmt.Errorf("failed to parse end time: %w", err)
+	// No hours configured for this day → open all day
+	if dayHours.Start == "" || dayHours.End == "" {
+		return true, nil
 	}
 
-	// Set date to current date
 	today := now.Format("2006-01-02")
-	startTime, _ = time.ParseInLocation("2006-01-02 15:04", today+" "+dayHours.Start, loc)
-	endTime, _ = time.ParseInLocation("2006-01-02 15:04", today+" "+dayHours.End, loc)
+	startTime, err := time.ParseInLocation("2006-01-02 15:04", today+" "+dayHours.Start, loc)
+	if err != nil {
+		log.Printf("[OperationalHours] Bad start time %q: %v", dayHours.Start, err)
+		return false, nil
+	}
+	endTime, err := time.ParseInLocation("2006-01-02 15:04", today+" "+dayHours.End, loc)
+	if err != nil {
+		log.Printf("[OperationalHours] Bad end time %q: %v", dayHours.End, err)
+		return false, nil
+	}
 
-	// Check if current time is within range
 	return now.After(startTime) && now.Before(endTime), nil
 }
 
@@ -73,6 +82,43 @@ func IsBotEnabled(enabled string) bool {
 // IsManualMode checks if bot is in manual mode
 func IsManualMode(manualMode string) bool {
 	return manualMode == "true"
+}
+
+// FormatOperationalHoursForAI converts the JSON schedule to human-readable text for OpenAI.
+// If hoursJSON is not valid JSON (old plain-text format), it is returned as-is.
+func FormatOperationalHoursForAI(hoursJSON string) string {
+	if hoursJSON == "" {
+		return ""
+	}
+	var hours OperationalHours
+	if err := json.Unmarshal([]byte(hoursJSON), &hours); err != nil {
+		return hoursJSON // old plain-text — pass through unchanged
+	}
+
+	days := []struct {
+		name string
+		h    DayHours
+	}{
+		{"Monday", hours.Monday},
+		{"Tuesday", hours.Tuesday},
+		{"Wednesday", hours.Wednesday},
+		{"Thursday", hours.Thursday},
+		{"Friday", hours.Friday},
+		{"Saturday", hours.Saturday},
+		{"Sunday", hours.Sunday},
+	}
+
+	var lines []string
+	for _, d := range days {
+		if d.h.Closed {
+			lines = append(lines, fmt.Sprintf("- %s: Closed", d.name))
+		} else if d.h.Start != "" && d.h.End != "" {
+			lines = append(lines, fmt.Sprintf("- %s: %s - %s", d.name, d.h.Start, d.h.End))
+		} else {
+			lines = append(lines, fmt.Sprintf("- %s: Open all day", d.name))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // getDayHours returns the hours for a specific day of week
@@ -93,6 +139,6 @@ func getDayHours(hours *OperationalHours, weekday time.Weekday) DayHours {
 	case time.Sunday:
 		return hours.Sunday
 	default:
-		return DayHours{Start: "00:00", End: "23:59"}
+		return DayHours{}
 	}
 }

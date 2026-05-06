@@ -25,6 +25,8 @@ type OrderServImpl struct {
 	OrderRepo           repositories.OrderRepo
 	ProductRepo         repositories.ProductRepo
 	DeliverySettingRepo repositories.DeliverySettingRepo
+	SettingRepo         repositories.SettingRepo
+	WaHub               *helpers.WhatsmeowHub
 }
 
 func NewOrderServImpl(
@@ -36,6 +38,8 @@ func NewOrderServImpl(
 	orderRepo repositories.OrderRepo,
 	productRepo repositories.ProductRepo,
 	deliverySettingRepo repositories.DeliverySettingRepo,
+	settingRepo repositories.SettingRepo,
+	waHub *helpers.WhatsmeowHub,
 ) *OrderServImpl {
 	return &OrderServImpl{
 		Db:                  db,
@@ -46,6 +50,8 @@ func NewOrderServImpl(
 		OrderRepo:           orderRepo,
 		ProductRepo:         productRepo,
 		DeliverySettingRepo: deliverySettingRepo,
+		SettingRepo:         settingRepo,
+		WaHub:               waHub,
 	}
 }
 
@@ -79,12 +85,21 @@ func (serv *OrderServImpl) buildProductDetails(schema string, orderProducts []do
 		productID, err := uuid.Parse(op.ProductID)
 		productName := ""
 		price := op.TotalPrice
+		var tagNames []string
 		if err == nil {
 			product, err := serv.ProductRepo.GetByID(serv.Db, schema, productID)
 			if err == nil {
 				productName = product.Name
 				price = product.Price
 			}
+			if tags, err := serv.ProductRepo.GetTagsByProductID(serv.Db, schema, productID); err == nil {
+				for _, t := range tags {
+					tagNames = append(tagNames, t.Name)
+				}
+			}
+		}
+		if tagNames == nil {
+			tagNames = []string{}
 		}
 		result = append(result, resOrder.ProductDetailResponse{
 			ID:          op.ID,
@@ -93,6 +108,7 @@ func (serv *OrderServImpl) buildProductDetails(schema string, orderProducts []do
 			Price:       price,
 			Quantity:    op.Quantity,
 			TotalPrice:  op.TotalPrice,
+			Tags:        tagNames,
 		})
 	}
 	return result
@@ -117,7 +133,7 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 		return nil, fmt.Errorf("failed to start transaction")
 	}
 
-	// Cek customer by phone — kalau ada pakai yang ada, kalau tidak ada buat baru
+	// Look up customer by phone — use existing record if found, create new one otherwise
 	customer, err := serv.CustomerRepo.GetByPhone(tx, schema, request.PhoneCountryCode, request.PhoneNumber)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -138,7 +154,7 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 		}
 	}
 
-	// Hitung total price
+	// Calculate total price
 	var totalPrice float64
 	var orderProducts []domains.OrderProduct
 
@@ -153,6 +169,11 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 		if err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("product %s not found", p.ProductID)
+		}
+
+		if err := serv.ProductRepo.DecrementQuantity(tx, schema, productID, p.Quantity); err != nil {
+			tx.Rollback()
+			return nil, fmt.Errorf("insufficient stock for product %s", p.ProductID)
 		}
 
 		itemTotal := product.Price * float64(p.Quantity)
@@ -192,6 +213,8 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 		tx.Rollback()
 		return nil, fmt.Errorf("failed to commit transaction")
 	}
+
+	go serv.sendOrderNotification(schema, order.ID, customer.Name, totalPrice)
 
 	fullOrder, err := serv.OrderRepo.GetByID(serv.Db, schema, order.ID)
 	if err != nil {
@@ -252,6 +275,33 @@ func (serv *OrderServImpl) GetByID(accessToken string, clientID uuid.UUID, id in
 	productDetails := serv.buildProductDetails(schema, order.Products)
 	response := resOrder.ToDetailResponse(*order, deliveryName, productDetails)
 	return &response, nil
+}
+
+func (serv *OrderServImpl) sendOrderNotification(schema string, orderID int, customerName string, totalPrice float64) {
+	// Prefer whatsmeow (personal WA) — no session-window restriction.
+	// Fall back to Cloud API if whatsmeow is not connected for this tenant.
+	var sender helpers.WhatsAppSender
+	if serv.WaHub != nil {
+		sender = serv.WaHub.GetSender(schema)
+	}
+	if sender == nil && serv.SettingRepo != nil {
+		settings, err := serv.SettingRepo.GetByGroupAndSubGroupName(serv.Db, schema, "integration", "WhatsApp")
+		if err == nil {
+			phoneNumberID, accessToken := "", ""
+			for _, s := range settings {
+				switch s.Name {
+				case "whatsapp-phone-number-id":
+					phoneNumberID = s.Value
+				case "whatsapp-access-token":
+					accessToken = s.Value
+				}
+			}
+			if phoneNumberID != "" && accessToken != "" {
+				sender = helpers.NewWhatsAppClient(phoneNumberID, accessToken)
+			}
+		}
+	}
+	helpers.SendOrderNotification(serv.Db, schema, fmt.Sprintf("%d", orderID), customerName, totalPrice, sender)
 }
 
 func (serv *OrderServImpl) UpdateStatus(accessToken string, clientID uuid.UUID, id int, request reqOrder.UpdateOrderStatusRequest) error {

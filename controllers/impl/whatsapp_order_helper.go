@@ -9,28 +9,72 @@ import (
 	"strings"
 	"time"
 
+	"os"
+	"strconv"
+
 	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v81"
-	stripecustomer "github.com/stripe/stripe-go/v81/customer"
-	stripeinvoice "github.com/stripe/stripe-go/v81/invoice"
-	"github.com/stripe/stripe-go/v81/invoiceitem"
-	"strconv"
+	checkoutsession "github.com/stripe/stripe-go/v81/checkout/session"
 )
 
 // waStartCreateOrder starts the order creation flow for WhatsApp
-func (cont *WhatsAppContImpl) waStartCreateOrder(waClient *helpers.WhatsAppClient, chatID, schema string, guest *domains.Guest) {
+func (cont *WhatsAppContImpl) waStartCreateOrder(waClient helpers.WhatsAppSender, chatID, schema string, guest *domains.Guest) {
 	log.Printf("[WhatsApp/Order] starting order creation for guest %s", guest.ID)
 
-	products, total, _ := cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 20})
+	if guest.ConversationState == nil {
+		guest.ConversationState = domains.JSONB{}
+	}
+	guest.ConversationState["state"] = "creating_order"
+	guest.ConversationState["guest_phone"] = guest.Phone
+
+	// Offer tag filter if any tags exist
+	tags, _ := cont.ProductTagRepo.GetAll(cont.Db, schema)
+	if len(tags) > 0 {
+		tagsJSON, _ := json.Marshal(tags)
+		guest.ConversationState["available_tags"] = string(tagsJSON)
+		guest.ConversationState["order_step"] = "tags"
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+
+		msg := "🏷️ Filter products by tag (optional):\n\n"
+		for i, tag := range tags {
+			msg += fmt.Sprintf("%d. %s\n", i+1, tag.Name)
+		}
+		msg += "\nEnter tag number(s) separated by comma (e.g. 1 or 1,2)\n"
+		msg += "Type 'all' to browse all products\n"
+		msg += "Type 'menu' to cancel"
+		cont.sendWABotMessage(waClient, uuid.Nil, guest.ID, guest.Name, chatID, schema, msg)
+		return
+	}
+
+	// No tags — go straight to product selection
+	cont.waSendProductList(waClient, chatID, schema, guest, uuid.Nil, nil)
+}
+
+// waSendProductList fetches products (filtered by tagIDs if given) and shows the selection prompt.
+func (cont *WhatsAppContImpl) waSendProductList(waClient helpers.WhatsAppSender, chatID, schema string, guest *domains.Guest, clientID uuid.UUID, tagIDs []uuid.UUID) {
+	var products []domains.Product
+	var total int
+	if len(tagIDs) > 0 {
+		products, total, _ = cont.ProductRepo.GetAllByTagIDs(cont.Db, schema, tagIDs, domains.Pagination{Page: 1, Limit: 20})
+	} else {
+		products, total, _ = cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 20})
+	}
+
 	if total == 0 {
-		cont.sendWABotMessage(waClient, uuid.Nil, guest.ID, guest.Name, chatID, schema,
-			"📦 No products available at the moment.\n\nType 'menu' to go back to main menu.")
+		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+			"📦 No products available for the selected tag(s).\n\nType 'menu' to go back.")
 		return
 	}
 
 	message := "🛒 Please select products you'd like to order:\n\n"
 	for i, p := range products {
-		message += fmt.Sprintf("%d. %s - $%s\n", i+1, p.Name, formatPriceSGD(p.Price))
+		line := fmt.Sprintf("%d. %s - $%s", i+1, p.Name, formatPriceSGD(p.Price))
+		if p.IsOutOfStock {
+			line += " (SOLD OUT)"
+		} else if p.ProductQuantity > 0 {
+			line += fmt.Sprintf(" (%d left)", p.ProductQuantity)
+		}
+		message += line + "\n"
 		if p.Description != nil && *p.Description != "" {
 			message += fmt.Sprintf("   %s\n", *p.Description)
 		}
@@ -40,19 +84,13 @@ func (cont *WhatsAppContImpl) waStartCreateOrder(waClient *helpers.WhatsAppClien
 	message += "• '2 Fried Rice and 1 Iced Tea'\n"
 	message += "\nType 'menu' to cancel"
 
-	cont.sendWABotMessage(waClient, uuid.Nil, guest.ID, guest.Name, chatID, schema, message)
-
-	if guest.ConversationState == nil {
-		guest.ConversationState = domains.JSONB{}
-	}
-	guest.ConversationState["state"] = "creating_order"
 	guest.ConversationState["order_step"] = "products"
-	guest.ConversationState["guest_phone"] = guest.Phone
 	cont.GuestRepo.Update(cont.Db, schema, *guest)
+	cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, message)
 }
 
 // waContinueCreateOrder continues the order creation flow
-func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppClient, chatID, schema string, guest *domains.Guest, text string, clientID uuid.UUID) {
+func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSender, chatID, schema string, guest *domains.Guest, text string, clientID uuid.UUID) {
 	if strings.EqualFold(text, "menu") {
 		if guest.ConversationState == nil {
 			guest.ConversationState = domains.JSONB{}
@@ -65,6 +103,10 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppCl
 		delete(guest.ConversationState, "guest_phone")
 		delete(guest.ConversationState, "address")
 		delete(guest.ConversationState, "postal_code")
+		delete(guest.ConversationState, "payment_method")
+		delete(guest.ConversationState, "selected_tag_ids")
+		delete(guest.ConversationState, "available_tags")
+		delete(guest.ConversationState, "delivery_charge")
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 		cont.waShowMenu(waClient, chatID, schema, guest, clientID)
 		return
@@ -86,8 +128,71 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppCl
 	}
 
 	switch orderStep {
+	case "tags":
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
+		}
+
+		var availableTags []domains.ProductTag
+		if tagsJSON, ok := guest.ConversationState["available_tags"].(string); ok {
+			json.Unmarshal([]byte(tagsJSON), &availableTags)
+		}
+
+		var selectedTagIDs []string
+		var selectedTagNames []string
+
+		if !strings.EqualFold(strings.TrimSpace(text), "all") {
+			for _, part := range strings.Split(text, ",") {
+				num, err := strconv.Atoi(strings.TrimSpace(part))
+				if err == nil && num >= 1 && num <= len(availableTags) {
+					selectedTagIDs = append(selectedTagIDs, availableTags[num-1].ID.String())
+					selectedTagNames = append(selectedTagNames, availableTags[num-1].Name)
+				}
+			}
+		}
+
+		if len(selectedTagIDs) > 0 {
+			tagIDsJSON, _ := json.Marshal(selectedTagIDs)
+			guest.ConversationState["selected_tag_ids"] = string(tagIDsJSON)
+		}
+
+		var tagUUIDs []uuid.UUID
+		for _, idStr := range selectedTagIDs {
+			if parsed, err := uuid.Parse(idStr); err == nil {
+				tagUUIDs = append(tagUUIDs, parsed)
+			}
+		}
+
+		if len(selectedTagNames) > 0 {
+			log.Printf("[WhatsApp/Order] Tag filter selected: %v", selectedTagNames)
+		}
+
+		cont.waSendProductList(waClient, chatID, schema, guest, clientID, tagUUIDs)
+
 	case "products":
-		allProducts, _, _ := cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 100})
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
+		}
+
+		// Load products filtered by tags if selected
+		var allProducts []domains.Product
+		if tagIDsJSON, ok := guest.ConversationState["selected_tag_ids"].(string); ok && tagIDsJSON != "" {
+			var tagIDStrs []string
+			if err := json.Unmarshal([]byte(tagIDsJSON), &tagIDStrs); err == nil {
+				var tagUUIDs []uuid.UUID
+				for _, idStr := range tagIDStrs {
+					if parsed, err := uuid.Parse(idStr); err == nil {
+						tagUUIDs = append(tagUUIDs, parsed)
+					}
+				}
+				if len(tagUUIDs) > 0 {
+					allProducts, _, _ = cont.ProductRepo.GetAllByTagIDs(cont.Db, schema, tagUUIDs, domains.Pagination{Page: 1, Limit: 100})
+				}
+			}
+		}
+		if len(allProducts) == 0 {
+			allProducts, _, _ = cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 100})
+		}
 
 		parsed, err := parseProductsWithAI(text, allProducts)
 		if err != nil {
@@ -105,6 +210,30 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppCl
 			return
 		}
 
+		// Stock availability check
+		var stockIssues []string
+		for _, p := range parsed {
+			for _, prod := range allProducts {
+				if prod.ID.String() == p.ProductID {
+					if prod.IsOutOfStock {
+						stockIssues = append(stockIssues, fmt.Sprintf("• %s is sold out", prod.Name))
+					} else if prod.ProductQuantity > 0 && p.Quantity > prod.ProductQuantity {
+						stockIssues = append(stockIssues, fmt.Sprintf("• %s — only %d left (you requested %d)", prod.Name, prod.ProductQuantity, p.Quantity))
+					}
+					break
+				}
+			}
+		}
+		if len(stockIssues) > 0 {
+			msg := "⚠️ Some items are unavailable:\n\n"
+			for _, s := range stockIssues {
+				msg += s + "\n"
+			}
+			msg += "\nPlease adjust your order and try again.\n\nType 'menu' to cancel"
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
+			return
+		}
+
 		confirmMsg := "✅ Products to order:\n"
 		for _, p := range parsed {
 			for _, prod := range allProducts {
@@ -116,9 +245,6 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppCl
 		}
 
 		parsedJSON, _ := json.Marshal(parsed)
-		if guest.ConversationState == nil {
-			guest.ConversationState = domains.JSONB{}
-		}
 		guest.ConversationState["products_parsed"] = string(parsedJSON)
 		guest.ConversationState["order_step"] = "name"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
@@ -160,7 +286,78 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppCl
 			"✅ Address saved!\n\nPostal code?\n\nType 'menu' to cancel")
 
 	case "postal_code":
-		cont.waFinalizeCreateOrder(waClient, chatID, schema, guest, text, clientID)
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
+		}
+		guest.ConversationState["postal_code"] = text
+
+		// Calculate subtotal and delivery charge from ordered products
+		var subtotal float64
+		var deliveryCharge float64
+		if productsParsedJSON, ok := guest.ConversationState["products_parsed"].(string); ok && productsParsedJSON != "" {
+			var parsed []ParsedProduct
+			if err := json.Unmarshal([]byte(productsParsedJSON), &parsed); err == nil {
+				allProducts, _, _ := cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 100})
+				chargeFound := false
+				for _, p := range parsed {
+					for _, prod := range allProducts {
+						if prod.ID.String() == p.ProductID && p.Quantity > 0 {
+							subtotal += prod.Price * float64(p.Quantity)
+							if !chargeFound {
+								settings, err := cont.DeliverySettingRepo.GetBySubGroupName(cont.Db, schema, prod.DeliveryID.String())
+								if err == nil && len(settings) > 0 {
+									ds := domains.ToDeliverySetting(settings)
+									if len(ds) > 0 && ds[0].DeliveryType == "Delivery" && ds[0].Charge > 0 {
+										deliveryCharge = ds[0].Charge
+									}
+								}
+								chargeFound = true
+							}
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if deliveryCharge > 0 {
+			guest.ConversationState["delivery_charge"] = fmt.Sprintf("%.2f", deliveryCharge)
+		}
+		guest.ConversationState["order_step"] = "payment_method"
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+
+		msg := ""
+		if deliveryCharge > 0 {
+			msg += "🧾 Order summary:\n"
+			msg += fmt.Sprintf("  Subtotal: $%s\n", formatPriceSGD(subtotal))
+			msg += fmt.Sprintf("  Delivery: $%s\n", formatPriceSGD(deliveryCharge))
+			msg += fmt.Sprintf("  Total: $%s\n\n", formatPriceSGD(subtotal+deliveryCharge))
+		}
+		msg += "💳 Choose payment method:\n\n"
+		msg += "1. Cash on Delivery (COD)\n"
+		msg += "2. Stripe (Online Payment)\n\n"
+		msg += "Type 'menu' to cancel"
+		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
+
+	case "payment_method":
+		choice := strings.TrimSpace(text)
+		var paymentMethod string
+		switch choice {
+		case "1":
+			paymentMethod = "cash_on_delivery"
+		case "2":
+			paymentMethod = "stripe"
+		default:
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"⚠️ Please enter 1 for Cash on Delivery or 2 for Stripe.\n\nType 'menu' to cancel")
+			return
+		}
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
+		}
+		guest.ConversationState["payment_method"] = paymentMethod
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+		cont.waFinalizeCreateOrder(waClient, chatID, schema, guest, clientID)
 
 	default:
 		log.Printf("[WhatsApp/Order] unknown order_step: %s", orderStep)
@@ -170,7 +367,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient *helpers.WhatsAppCl
 }
 
 // waFinalizeCreateOrder creates the order and saves it to the database
-func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppClient, chatID, schema string, guest *domains.Guest, postalCode string, clientID uuid.UUID) {
+func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSender, chatID, schema string, guest *domains.Guest, clientID uuid.UUID) {
 	if guest.ConversationState == nil {
 		guest.ConversationState = domains.JSONB{}
 	}
@@ -179,10 +376,15 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 	customerName, _ := guest.ConversationState["customer_name"].(string)
 	customerEmail, _ := guest.ConversationState["customer_email"].(string)
 	address, _ := guest.ConversationState["address"].(string)
+	postalCode, _ := guest.ConversationState["postal_code"].(string)
 	guestPhone, _ := guest.ConversationState["guest_phone"].(string)
+	selectedPaymentMethod, _ := guest.ConversationState["payment_method"].(string)
+	if selectedPaymentMethod == "" {
+		selectedPaymentMethod = "stripe"
+	}
 
-	log.Printf("[WhatsApp/Order] finalizing: name=%s, email=%s, phone=%s, address=%s, postal=%s",
-		customerName, customerEmail, guestPhone, address, postalCode)
+	log.Printf("[WhatsApp/Order] finalizing: name=%s, email=%s, phone=%s, address=%s, postal=%s, payment=%s",
+		customerName, customerEmail, guestPhone, address, postalCode, selectedPaymentMethod)
 
 	phoneCountryCode := "+62"
 	phoneNumber := guestPhone
@@ -201,12 +403,15 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 
 	// Find or create customer
 	customer, err := cont.CustomerRepo.GetByPhone(tx, schema, phoneCountryCode, phoneNumber)
+	if err != nil && guest.Username != "" {
+		customer, err = cont.CustomerRepo.GetByUsername(tx, schema, guest.Username)
+	}
 	if err != nil {
 		customer = &domains.Customer{
 			Name:             customerName,
 			PhoneCountryCode: &phoneCountryCode,
 			PhoneNumber:      &phoneNumber,
-			AccountType:      "WhatsApp",
+			AccountType:      "Whatsapp",
 		}
 		customer, err = cont.CustomerRepo.Create(tx, schema, *customer)
 		if err != nil {
@@ -224,12 +429,16 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 	var totalPrice float64
 	var productsSummary string
 
+	deliverySubGroupName := ""
 	if productsParsedJSON != "" {
 		var parsed []ParsedProduct
 		if err := json.Unmarshal([]byte(productsParsedJSON), &parsed); err == nil {
 			for _, p := range parsed {
 				for _, prod := range allProducts {
 					if prod.ID.String() == p.ProductID && p.Quantity > 0 {
+						if deliverySubGroupName == "" {
+							deliverySubGroupName = prod.DeliveryID.String()
+						}
 						itemTotal := prod.Price * float64(p.Quantity)
 						totalPrice += itemTotal
 						orderProducts = append(orderProducts, domains.OrderProduct{
@@ -253,14 +462,30 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 		return
 	}
 
-	// Create order
+	// Add delivery charge to total if set
+	subtotalPrice := totalPrice
+	var deliveryCharge float64
+	if chargeStr, ok := guest.ConversationState["delivery_charge"].(string); ok && chargeStr != "" {
+		if charge, err := strconv.ParseFloat(chargeStr, 64); err == nil && charge > 0 {
+			deliveryCharge = charge
+			totalPrice += charge
+		}
+	}
+
+	// Create order — include tag filter IDs for tracking
+	var tagFilterIDs []string
+	if tagIDsJSON, ok := guest.ConversationState["selected_tag_ids"].(string); ok && tagIDsJSON != "" {
+		json.Unmarshal([]byte(tagIDsJSON), &tagFilterIDs)
+	}
+
 	order := &domains.Order{
 		CustomerID:           customer.ID,
 		TotalPrice:           totalPrice,
 		Status:               domains.OrderStatusPending,
-		DeliverySubGroupName: "Default",
+		DeliverySubGroupName: deliverySubGroupName,
 		StreetAddress:        address,
 		PostalCode:           postalCode,
+		TagFilterIDs:         tagFilterIDs,
 	}
 
 	order, err = cont.OrderRepo.Create(tx, schema, *order)
@@ -282,43 +507,77 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 		return
 	}
 
-	// Create Stripe invoice
-	stripeInvoiceID, stripeInvoiceURL, err := cont.waCreateStripeInvoice(schema, order, customer, customerEmail)
-	if err != nil {
-		log.Printf("[WhatsApp/Order] Stripe error: %v", err)
-		stripeInvoiceID = nil
-		stripeInvoiceURL = nil
+	// Decrement stock for products that track quantity
+	productMap := make(map[string]domains.Product)
+	for _, prod := range allProducts {
+		productMap[prod.ID.String()] = prod
+	}
+	for _, op := range orderProducts {
+		prod, ok := productMap[op.ProductID]
+		if !ok || prod.ProductQuantity <= 0 {
+			continue
+		}
+		productUUID, parseErr := uuid.Parse(op.ProductID)
+		if parseErr != nil {
+			continue
+		}
+		if err := cont.ProductRepo.DecrementQuantity(tx, schema, productUUID, op.Quantity); err != nil {
+			tx.Rollback()
+			log.Printf("[WhatsApp/Order] ERROR: Stock decrement failed for product %s: %v", op.ProductID, err)
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"❌ Insufficient stock for one or more items. Please try again.")
+			return
+		}
 	}
 
-	// Update or create order payment
-	stripePaymentStatus := ""
-	if stripeInvoiceID != nil {
-		stripePaymentStatus = "open"
-	}
+	// Payment: COD or Stripe
+	var orderPayment *domains.OrderPayment
 
-	existingPayment, _ := cont.OrderPaymentRepo.GetByOrderID(tx, schema, order.ID)
-	if existingPayment != nil && existingPayment.ID != uuid.Nil {
-		tx.Table(schema+".order_payments").
-			Where("id = ?", existingPayment.ID).
-			Updates(map[string]interface{}{
-				"payment_session_id":     stripeInvoiceID,
-				"payment_session_url":    stripeInvoiceURL,
-				"payment_gateway_status": stripePaymentStatus,
-				"payment_invoice_id":     stripeInvoiceID,
-			})
+	if selectedPaymentMethod == "cash_on_delivery" {
+		log.Printf("[WhatsApp/Order] Payment method: Cash on Delivery")
+		orderPayment = &domains.OrderPayment{
+			OrderID:        order.ID,
+			PaymentStatus:  domains.PaymentStatusUnpaid,
+			PaymentMethod:  "cash_on_delivery",
+			PaymentGateway: "cod",
+			TotalPrice:     totalPrice,
+			ExpireAt:       order.CreatedAt.Add(24 * time.Hour),
+		}
 	} else {
-		orderPayment := &domains.OrderPayment{
+		sessionID, sessionURL, stripeErr := cont.waCreateStripeCheckout(schema, order, customerEmail)
+		if stripeErr != nil {
+			tx.Rollback()
+			log.Printf("[WhatsApp/Order] Stripe checkout error: %v", stripeErr)
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"❌ Failed to create payment link. Please try again.")
+			return
+		}
+		stripeStatus := "open"
+		orderPayment = &domains.OrderPayment{
 			OrderID:              order.ID,
 			PaymentStatus:        domains.PaymentStatusUnpaid,
 			PaymentMethod:        "stripe",
 			PaymentGateway:       "stripe",
 			TotalPrice:           totalPrice,
 			ExpireAt:             order.CreatedAt.Add(15 * time.Minute),
-			PaymentSessionID:     stripeInvoiceID,
-			PaymentSessionURL:    stripeInvoiceURL,
-			PaymentGatewayStatus: &stripePaymentStatus,
-			PaymentInvoiceID:     stripeInvoiceID,
+			PaymentSessionID:     sessionID,
+			PaymentSessionURL:    sessionURL,
+			PaymentGatewayStatus: &stripeStatus,
+			PaymentInvoiceID:     sessionID,
 		}
+	}
+
+	existingPayment, _ := cont.OrderPaymentRepo.GetByOrderID(tx, schema, order.ID)
+	if existingPayment != nil && existingPayment.ID != uuid.Nil {
+		tx.Table(schema+".order_payments").Where("id = ?", existingPayment.ID).
+			Updates(map[string]interface{}{
+				"payment_method":         orderPayment.PaymentMethod,
+				"payment_session_id":     orderPayment.PaymentSessionID,
+				"payment_session_url":    orderPayment.PaymentSessionURL,
+				"payment_gateway_status": orderPayment.PaymentGatewayStatus,
+				"payment_invoice_id":     orderPayment.PaymentInvoiceID,
+			})
+	} else {
 		if _, err := cont.OrderPaymentRepo.Create(tx, schema, *orderPayment); err != nil {
 			tx.Rollback()
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
@@ -334,14 +593,34 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 		return
 	}
 
-	log.Printf("[WhatsApp/Order] ✅ Order created: ID=%d", order.ID)
+	log.Printf("[WhatsApp/Order] ✅ Order created: ID=%d, payment=%s", order.ID, selectedPaymentMethod)
 
-	paymentLink := "Invoice will be sent separately"
-	if stripeInvoiceURL != nil && *stripeInvoiceURL != "" {
-		paymentLink = *stripeInvoiceURL
-	} else if stripeInvoiceID != nil {
-		paymentLink = fmt.Sprintf("https://invoice.stripe.com/i/%s", *stripeInvoiceID)
-	}
+	// Fire order notification (WA + email) in background
+	go func() {
+		// Prefer whatsmeow (no 24h session restriction). Fall back to Cloud API.
+		var notifSender helpers.WhatsAppSender
+		if cont.WhatsmeowHub != nil {
+			notifSender = cont.WhatsmeowHub.GetSender(schema)
+		}
+		if notifSender == nil {
+			waSettings, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "WhatsApp")
+			if err == nil {
+				phoneNumberID, accessToken := "", ""
+				for _, s := range waSettings {
+					switch s.Name {
+					case "whatsapp-phone-number-id":
+						phoneNumberID = s.Value
+					case "whatsapp-access-token":
+						accessToken = s.Value
+					}
+				}
+				if phoneNumberID != "" && accessToken != "" {
+					notifSender = helpers.NewWhatsAppClient(phoneNumberID, accessToken)
+				}
+			}
+		}
+		helpers.SendOrderNotification(cont.Db, schema, fmt.Sprintf("%d", order.ID), customerName, totalPrice, notifSender)
+	}()
 
 	summary := "🎉 Order Created!\n\n"
 	summary += "✅ Order details:\n"
@@ -351,10 +630,20 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 	summary += fmt.Sprintf("- Phone: %s%s\n", phoneCountryCode, phoneNumber)
 	summary += fmt.Sprintf("- Address: %s\n", address)
 	summary += fmt.Sprintf("- Postal code: %s\n", postalCode)
+	if deliveryCharge > 0 {
+		summary += fmt.Sprintf("- Subtotal: $%s\n", formatPriceSGD(subtotalPrice))
+		summary += fmt.Sprintf("- Delivery: $%s\n", formatPriceSGD(deliveryCharge))
+	}
 	summary += fmt.Sprintf("- Total: $%s\n", formatPriceSGD(totalPrice))
-	summary += "\n💳 Pay Now:\n"
-	summary += fmt.Sprintf("%s\n\n", paymentLink)
-	summary += "⏰ Order expires in 15 minutes!\n\n"
+
+	if selectedPaymentMethod == "cash_on_delivery" {
+		summary += "\n💵 Payment: Cash on Delivery\n"
+		summary += fmt.Sprintf("Please prepare $%s cash upon delivery.\n\n", formatPriceSGD(totalPrice))
+	} else {
+		summary += "\n💳 Pay Now:\n"
+		summary += fmt.Sprintf("%s\n\n", *orderPayment.PaymentSessionURL)
+		summary += "⏰ Payment link expires in 15 minutes!\n\n"
+	}
 	summary += "Type 'menu' to go back to the main menu."
 
 	cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, summary)
@@ -368,11 +657,16 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient *helpers.WhatsAppCl
 	delete(guest.ConversationState, "guest_phone")
 	delete(guest.ConversationState, "address")
 	delete(guest.ConversationState, "postal_code")
+	delete(guest.ConversationState, "payment_method")
+	delete(guest.ConversationState, "selected_tag_ids")
+	delete(guest.ConversationState, "available_tags")
+	delete(guest.ConversationState, "delivery_charge")
 	cont.GuestRepo.Update(cont.Db, schema, *guest)
 }
 
-// waCreateStripeInvoice creates a Stripe invoice for a WhatsApp order
-func (cont *WhatsAppContImpl) waCreateStripeInvoice(schema string, order *domains.Order, customer *domains.Customer, customerEmail string) (*string, *string, error) {
+// waCreateStripeCheckout creates a Stripe Checkout Session for a WhatsApp order.
+// Returns (sessionID, sessionURL, error). Does NOT require customer email.
+func (cont *WhatsAppContImpl) waCreateStripeCheckout(schema string, order *domains.Order, customerEmail string) (*string, *string, error) {
 	settings, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "Stripe Client")
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get Stripe settings: %w", err)
@@ -385,63 +679,53 @@ func (cont *WhatsAppContImpl) waCreateStripeInvoice(schema string, order *domain
 			break
 		}
 	}
-
 	if stripeSecretKey == "" {
 		return nil, nil, fmt.Errorf("Stripe secret key not configured")
 	}
 
 	stripe.Key = stripeSecretKey
 
-	stripeCustomer, err := stripecustomer.New(&stripe.CustomerParams{
-		Name:  stripe.String(customer.Name),
-		Email: stripe.String(customerEmail),
-		Metadata: map[string]string{
-			"order_id":    strconv.Itoa(order.ID),
-			"schema":      schema,
-			"customer_id": strconv.Itoa(customer.ID),
+	successURL := os.Getenv("STRIPE_SUCCESS_URL")
+	cancelURL := os.Getenv("STRIPE_CANCEL_URL")
+	if successURL == "" {
+		successURL = "https://example.com/payment/success"
+	}
+	if cancelURL == "" {
+		cancelURL = "https://example.com/payment/cancel"
+	}
+
+	params := &stripe.CheckoutSessionParams{
+		Mode: stripe.String(string(stripe.CheckoutSessionModePayment)),
+		LineItems: []*stripe.CheckoutSessionLineItemParams{
+			{
+				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{
+					Currency: stripe.String(string(stripe.CurrencySGD)),
+					ProductData: &stripe.CheckoutSessionLineItemPriceDataProductDataParams{
+						Name: stripe.String(fmt.Sprintf("Order #%d", order.ID)),
+					},
+					UnitAmount: stripe.Int64(int64(order.TotalPrice * 100)),
+				},
+				Quantity: stripe.Int64(1),
+			},
 		},
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Stripe customer: %w", err)
-	}
-
-	invoiceParams := &stripe.InvoiceParams{
-		Customer:         stripe.String(stripeCustomer.ID),
-		CollectionMethod: stripe.String("send_invoice"),
-		DaysUntilDue:     stripe.Int64(7),
-		Description:      stripe.String(fmt.Sprintf("Order #%d Payment", order.ID)),
-		Metadata: map[string]string{
-			"order_id":    strconv.Itoa(order.ID),
-			"schema":      schema,
-			"customer_id": strconv.Itoa(customer.ID),
-		},
-	}
-
-	stripeInvoice, err := stripeinvoice.New(invoiceParams)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create Stripe invoice: %w", err)
-	}
-
-	itemParams := &stripe.InvoiceItemParams{
-		Customer:    stripe.String(stripeCustomer.ID),
-		Invoice:     stripe.String(stripeInvoice.ID),
-		Amount:      stripe.Int64(int64(order.TotalPrice * 100)),
-		Currency:    stripe.String(string(stripe.CurrencySGD)),
-		Description: stripe.String("Order Payment"),
+		SuccessURL: stripe.String(successURL),
+		CancelURL:  stripe.String(cancelURL),
 		Metadata: map[string]string{
 			"order_id": strconv.Itoa(order.ID),
+			"schema":   schema,
 		},
+		ExpiresAt: stripe.Int64(time.Now().Add(30 * time.Minute).Unix()),
 	}
 
-	if _, err = invoiceitem.New(itemParams); err != nil {
-		return nil, nil, fmt.Errorf("failed to add invoice item: %w", err)
+	if customerEmail != "" {
+		params.CustomerEmail = stripe.String(customerEmail)
 	}
 
-	finalInv, err := stripeinvoice.FinalizeInvoice(stripeInvoice.ID, nil)
+	session, err := checkoutsession.New(params)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to finalize invoice: %w", err)
+		return nil, nil, fmt.Errorf("failed to create Stripe checkout session: %w", err)
 	}
 
-	log.Printf("[WhatsApp/Stripe] Invoice finalized: ID=%s", finalInv.ID)
-	return &finalInv.ID, &finalInv.HostedInvoiceURL, nil
+	log.Printf("[WhatsApp/Stripe] Checkout session created: ID=%s", session.ID)
+	return &session.ID, &session.URL, nil
 }

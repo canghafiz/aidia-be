@@ -22,21 +22,21 @@ func NewProductContImpl(productServ services.ProductServ) *ProductContImpl {
 }
 
 // Create @Summary      Create Product
-// @Description  Buat produk baru beserta gambar dan kategori
+// @Description  Create a new product along with images and categories
 // @Tags         Product
 // @Accept       multipart/form-data
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id        path      string    true  "Client ID"
-// @Param        name             formData  string    true  "Nama produk"
-// @Param        weight           formData  number    true  "Berat produk"
-// @Param        price            formData  number    true  "Harga jual"
-// @Param        original_price   formData  number    true  "Harga asli"
-// @Param        description      formData  string    false "Deskripsi produk"
+// @Param        name             formData  string    true  "Product name"
+// @Param        weight           formData  number    true  "Product weight"
+// @Param        price            formData  number    true  "Selling price"
+// @Param        original_price   formData  number    true  "Original price"
+// @Param        description      formData  string    false "Product description"
 // @Param        delivery_sub_group_name      formData  string    true  "Delivery Sub Group Name (UUID)"
-// @Param        is_out_of_stock  formData  boolean   false "Stok habis"
+// @Param        is_out_of_stock  formData  boolean   false "Out of stock"
 // @Param        category_ids     formData  []string  false "Category IDs (UUID)"
-// @Param        images           formData  file      false "Gambar produk"
+// @Param        images           formData  file      false "Product images"
 // @Success      200              {object}  helpers.ApiResponse
 // @Failure      400              {object}  helpers.ApiResponse
 // @Failure      401              {object}  helpers.ApiResponse
@@ -75,23 +75,23 @@ func (cont *ProductContImpl) Create(ctx *gin.Context) {
 }
 
 // Update @Summary      Update Product
-// @Description  Update produk beserta gambar dan kategori
+// @Description  Update a product along with images and categories
 // @Tags         Product
 // @Accept       multipart/form-data
 // @Produce      json
 // @Security     BearerAuth
 // @Param        client_id        path      string    true  "Client ID"
 // @Param        product_id       path      string    true  "Product ID"
-// @Param        name             formData  string    true  "Nama produk"
-// @Param        weight           formData  number    true  "Berat produk"
-// @Param        price            formData  number    true  "Harga jual"
-// @Param        original_price   formData  number    true  "Harga asli"
-// @Param        description      formData  string    false "Deskripsi produk"
+// @Param        name             formData  string    true  "Product name"
+// @Param        weight           formData  number    true  "Product weight"
+// @Param        price            formData  number    true  "Selling price"
+// @Param        original_price   formData  number    true  "Original price"
+// @Param        description      formData  string    false "Product description"
 // @Param        delivery_sub_group_name      formData  string    true  "Delivery Sub Group Name (UUID)"
-// @Param        is_out_of_stock  formData  boolean   false "Stok habis"
-// @Param        is_active        formData  boolean   false "Status aktif"
+// @Param        is_out_of_stock  formData  boolean   false "Out of stock"
+// @Param        is_active        formData  boolean   false "Active status"
 // @Param        category_ids     formData  []string  false "Category IDs (UUID)"
-// @Param        images           formData  file      false "Gambar produk baru (kosongkan jika tidak ingin mengubah)"
+// @Param        images           formData  file      false "New product images (leave empty to keep existing)"
 // @Success      200              {object}  helpers.ApiResponse
 // @Failure      400              {object}  helpers.ApiResponse
 // @Failure      401              {object}  helpers.ApiResponse
@@ -136,7 +136,7 @@ func (cont *ProductContImpl) Update(ctx *gin.Context) {
 }
 
 // GetAll @Summary      Get All Products
-// @Description  Ambil semua produk dengan pagination
+// @Description  Get all products with pagination
 // @Tags         Product
 // @Produce      json
 // @Security     BearerAuth
@@ -170,7 +170,7 @@ func (cont *ProductContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetByID @Summary      Get Product By ID
-// @Description  Ambil detail produk berdasarkan ID
+// @Description  Get product details by ID
 // @Tags         Product
 // @Produce      json
 // @Security     BearerAuth
@@ -208,7 +208,7 @@ func (cont *ProductContImpl) GetByID(ctx *gin.Context) {
 }
 
 // Delete @Summary      Delete Product
-// @Description  Hapus produk beserta gambar dan kategori
+// @Description  Delete a product along with its images and categories
 // @Tags         Product
 // @Produce      json
 // @Security     BearerAuth
@@ -271,20 +271,34 @@ func parseCreateProductForm(ctx *gin.Context) (*reqProduct.CreateProductRequest,
 		description = &d
 	}
 
+	productQuantity := 0
+	if pqStr := ctx.PostForm("product_quantity"); pqStr != "" {
+		if pq, e := strconv.Atoi(pqStr); e == nil && pq >= 0 {
+			productQuantity = pq
+		}
+	}
+
 	categoryIDs, err := parseUUIDs(ctx.PostFormArray("category_ids"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid category_ids value")
 	}
 
+	tagIDs, err := parseUUIDs(ctx.PostFormArray("tag_ids"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid tag_ids value")
+	}
+
 	return &reqProduct.CreateProductRequest{
-		Name:          ctx.PostForm("name"),
-		Weight:        weight,
-		Price:         price,
-		OriginalPrice: originalPrice,
-		Description:   description,
-		DeliveryID:    deliveryID,
-		IsOutOfStock:  ctx.PostForm("is_out_of_stock") == "true",
-		CategoryIDs:   categoryIDs,
+		Name:            ctx.PostForm("name"),
+		Weight:          weight,
+		Price:           price,
+		OriginalPrice:   originalPrice,
+		Description:     description,
+		DeliveryID:      deliveryID,
+		IsOutOfStock:    ctx.PostForm("is_out_of_stock") == "true",
+		ProductQuantity: productQuantity,
+		CategoryIDs:     categoryIDs,
+		TagIDs:          tagIDs,
 	}, nil
 }
 
@@ -311,21 +325,35 @@ func parseUpdateProductForm(ctx *gin.Context) (*reqProduct.UpdateProductRequest,
 		description = &d
 	}
 
+	productQuantity := 0
+	if pqStr := ctx.PostForm("product_quantity"); pqStr != "" {
+		if pq, e := strconv.Atoi(pqStr); e == nil && pq >= 0 {
+			productQuantity = pq
+		}
+	}
+
 	categoryIDs, err := parseUUIDs(ctx.PostFormArray("category_ids"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid category_ids value")
 	}
 
+	tagIDs, err := parseUUIDs(ctx.PostFormArray("tag_ids"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid tag_ids value")
+	}
+
 	return &reqProduct.UpdateProductRequest{
-		Name:          ctx.PostForm("name"),
-		Weight:        weight,
-		Price:         price,
-		OriginalPrice: originalPrice,
-		Description:   description,
-		DeliveryID:    deliveryID,
-		IsOutOfStock:  ctx.PostForm("is_out_of_stock") == "true",
-		IsActive:      ctx.PostForm("is_active") == "true",
-		CategoryIDs:   categoryIDs,
+		Name:            ctx.PostForm("name"),
+		Weight:          weight,
+		Price:           price,
+		OriginalPrice:   originalPrice,
+		Description:     description,
+		DeliveryID:      deliveryID,
+		IsOutOfStock:    ctx.PostForm("is_out_of_stock") == "true",
+		IsActive:        ctx.PostForm("is_active") == "true",
+		ProductQuantity: productQuantity,
+		CategoryIDs:     categoryIDs,
+		TagIDs:          tagIDs,
 	}, nil
 }
 

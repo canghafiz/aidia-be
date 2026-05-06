@@ -19,13 +19,18 @@ type N8NServImpl struct {
 
 // N8NRequest represents request to n8n webhook
 type N8NRequest struct {
-	Schema   string                  `json:"schema"`
-	GuestID  string                  `json:"guest_id"`
-	ChatID   string                  `json:"chat_id"`
-	Message  string                  `json:"message"`
-	Prompt   string                  `json:"prompt,omitempty"`
-	History  []N8NMessageHistory     `json:"history,omitempty"`
-	Metadata map[string]interface{}  `json:"metadata,omitempty"`
+	Schema            string                 `json:"schema"`
+	GuestID           string                 `json:"guest_id"`
+	ChatID            string                 `json:"chat_id"`
+	Message           string                 `json:"message"`
+	Prompt            string                 `json:"prompt,omitempty"`
+	History           []N8NMessageHistory    `json:"history,omitempty"`
+	Metadata          map[string]interface{} `json:"metadata,omitempty"`
+	IsRegistered      bool                   `json:"is_registered"`
+	ClientID          string                 `json:"client_id"`
+	GuestUsername     string                 `json:"guest_username"`
+	StoreName         string                 `json:"store_name,omitempty"`
+	ConversationState map[string]interface{} `json:"conversation_state,omitempty"`
 }
 
 // N8NMessageHistory represents message history for context
@@ -66,23 +71,28 @@ func NewWhatsAppN8NServImpl() *N8NServImpl {
 }
 
 // ProcessMessage forwards message to n8n for AI processing
-func (s *N8NServImpl) ProcessMessage(schema, guestID, chatID, message, prompt string, history []domains.GuestMessage) (*services.N8NResponse, error) {
+func (s *N8NServImpl) ProcessMessage(schema, guestID, chatID, message, prompt string, history []domains.GuestMessage, isRegistered bool, clientID, guestUsername, storeName string, convState map[string]interface{}) (*services.N8NResponse, error) {
 	if s.N8NURL == "" {
 		return nil, fmt.Errorf("n8n webhook URL not configured")
 	}
 
 	// Use default prompt if not provided
 	if prompt == "" {
-		prompt = "Anda adalah asisten AI untuk restoran ini. Tugas Anda:\n1. Bantu customer lihat menu/produk\n2. Bantu customer buat pesanan\n3. Jawab pertanyaan seputar restoran\n4. Selalu konfirmasi sebelum membuat pesanan\n\nBalas dengan bahasa yang ramah dan natural."
+		prompt = "You are an AI assistant for this restaurant. Your tasks:\n1. Help customers view the menu and products\n2. Help customers create orders\n3. Answer questions about the restaurant\n4. Always confirm before placing an order\n\nReply in a friendly and natural tone."
 	}
 
 	// Build request
 	reqBody := N8NRequest{
-		Schema:  schema,
-		GuestID: guestID,
-		ChatID:  chatID,
-		Message: message,
-		Prompt:  prompt,
+		Schema:            schema,
+		GuestID:           guestID,
+		ChatID:            chatID,
+		Message:           message,
+		Prompt:            prompt,
+		IsRegistered:      isRegistered,
+		ClientID:          clientID,
+		GuestUsername:     guestUsername,
+		StoreName:         storeName,
+		ConversationState: convState,
 	}
 
 	// Add message history (last 20 messages for context)

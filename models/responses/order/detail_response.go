@@ -13,12 +13,13 @@ type CustomerDetailResponse struct {
 }
 
 type ProductDetailResponse struct {
-	ID          int     `json:"id"`
-	ProductID   string  `json:"product_id"`
-	ProductName string  `json:"product_name"`
-	Price       float64 `json:"price"`
-	Quantity    int     `json:"quantity"`
-	TotalPrice  float64 `json:"total_price"`
+	ID          int      `json:"id"`
+	ProductID   string   `json:"product_id"`
+	ProductName string   `json:"product_name"`
+	Price       float64  `json:"price"`
+	Quantity    int      `json:"quantity"`
+	TotalPrice  float64  `json:"total_price"`
+	Tags        []string `json:"tags"`
 }
 
 type PaymentDetailResponse struct {
@@ -37,6 +38,7 @@ type DetailResponse struct {
 	DeliveryName         string                  `json:"delivery_name"`
 	StreetAddress        string                  `json:"street_address"`
 	PostalCode           string                  `json:"postal_code"`
+	TagFilterIDs         []string                `json:"tag_filter_ids,omitempty"`
 	Products             []ProductDetailResponse `json:"products"`
 	Payment              *PaymentDetailResponse  `json:"payment"`
 	CreatedAt            time.Time               `json:"created_at"`
@@ -73,6 +75,7 @@ func ToDetailResponse(o domains.Order, deliveryName string, products []ProductDe
 		DeliveryName:         deliveryName,
 		StreetAddress:        o.StreetAddress,
 		PostalCode:           o.PostalCode,
+		TagFilterIDs:         []string(o.TagFilterIDs),
 		Products:             products,
 		Payment:              payment,
 		CreatedAt:            o.CreatedAt,

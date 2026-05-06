@@ -243,6 +243,64 @@ func (c *WhatsAppClient) SendMessage(to, text string) error {
 	return nil
 }
 
+func (c *WhatsAppClient) SendImageMessage(to, imageURL, caption string) error {
+	if c.PhoneNumberID == "" || c.AccessToken == "" {
+		return fmt.Errorf("whatsapp credentials not configured")
+	}
+
+	imagePayload := map[string]interface{}{
+		"link": imageURL,
+	}
+	if caption != "" {
+		imagePayload["caption"] = caption
+	}
+
+	reqBody := map[string]interface{}{
+		"messaging_product": "whatsapp",
+		"to":                to,
+		"type":              "image",
+		"image":             imagePayload,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/%s/messages", WhatsAppAPIURL, c.PhoneNumberID)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.AccessToken)
+
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	log.Printf("[WhatsApp] sendImageMessage to=%s status=%d body=%s", to, resp.StatusCode, string(body))
+
+	if resp.StatusCode != 200 {
+		var graphErr metaGraphAPIErrorResponse
+		if err := json.Unmarshal(body, &graphErr); err == nil && graphErr.Error != nil {
+			if graphErr.Error.Message != "" {
+				return fmt.Errorf("whatsapp API error: %s", graphErr.Error.Message)
+			}
+		}
+		return fmt.Errorf("whatsapp API error: status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 func (c *WhatsAppClient) SendTemplateMessage(to, templateName, languageCode string, bodyParams []string) error {
 	if c.PhoneNumberID == "" || c.AccessToken == "" {
 		return fmt.Errorf("whatsapp credentials not configured")

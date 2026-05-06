@@ -19,7 +19,7 @@ func NewOrderPaymentContImpl(orderPaymentServ services.OrderPaymentServ) *OrderP
 }
 
 // GetAll @Summary      Get All Order Payments
-// @Description  Ambil semua order payment dengan pagination
+// @Description  Get all order payments with pagination
 // @Tags         Order Payment
 // @Produce      json
 // @Security     BearerAuth
@@ -55,7 +55,7 @@ func (cont *OrderPaymentContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetByID @Summary      Get Order Payment By ID
-// @Description  Ambil detail order payment berdasarkan ID
+// @Description  Get order payment details by ID
 // @Tags         Order Payment
 // @Produce      json
 // @Security     BearerAuth
@@ -95,7 +95,7 @@ func (cont *OrderPaymentContImpl) GetByID(ctx *gin.Context) {
 }
 
 // UpdateStatus @Summary      Update Order Payment Status
-// @Description  Update status order payment
+// @Description  Update the status of an order payment
 // @Tags         Order Payment
 // @Accept       json
 // @Produce      json

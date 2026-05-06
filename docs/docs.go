@@ -112,7 +112,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua approval logs dengan pagination (Hanya untuk role SuperAdmin)",
+                "description": "Get all approval logs with pagination (SuperAdmin only)",
                 "produces": [
                     "application/json"
                 ],
@@ -168,7 +168,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus approval log berdasarkan approval_id (Hanya untuk role SuperAdmin)",
+                "description": "Delete an approval log by approval_id (SuperAdmin only)",
                 "produces": [
                     "application/json"
                 ],
@@ -211,7 +211,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Approve user berdasarkan approval_id (Hanya untuk role SuperAdmin)",
+                "description": "Approve a user by approval_id (SuperAdmin only)",
                 "produces": [
                     "application/json"
                 ],
@@ -256,7 +256,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ganti password user yang sedang login",
+                "description": "Change the password of the currently logged-in user",
                 "consumes": [
                     "application/json"
                 ],
@@ -301,7 +301,7 @@ const docTemplate = `{
         },
         "/auth/check-superadmin-exist": {
             "get": {
-                "description": "Cek apakah SuperAdmin sudah ada di sistem (jika true === ada, tidak perlu panggil api create super admin), dipanggil pertama kali sebelum login",
+                "description": "Check whether a SuperAdmin already exists in the system (if true, no need to call the create SuperAdmin API). Called once before login.",
                 "produces": [
                     "application/json"
                 ],
@@ -338,7 +338,7 @@ const docTemplate = `{
         },
         "/auth/create-superadmin": {
             "post": {
-                "description": "Buat akun SuperAdmin, hanya bisa dilakukan sekali",
+                "description": "Create a SuperAdmin account, can only be done once",
                 "consumes": [
                     "application/json"
                 ],
@@ -377,7 +377,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Login menggunakan username atau email beserta password",
+                "description": "Login using username or email along with password",
                 "consumes": [
                     "application/json"
                 ],
@@ -439,7 +439,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil data user yang sedang login beserta tenant dan business profile",
+                "description": "Get the currently logged-in user's data along with tenant and business profile",
                 "produces": [
                     "application/json"
                 ],
@@ -746,7 +746,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua customer dengan pagination",
+                "description": "Get all customers with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -813,7 +813,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat customer baru secara generic. Saat ini mendukung flow WhatsApp dari form CRM dengan ` + "`" + `account_type = Whatsapp` + "`" + `.",
+                "description": "Create a new customer generically. Currently supports the WhatsApp flow from the CRM form with ` + "`" + `account_type = Whatsapp` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -882,7 +882,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat customer baru via Telegram. Memvalidasi username ke Telegram API. Jika sudah terdaftar, kembalikan data yang ada.",
+                "description": "Create a new customer via Telegram. Validates the username against the Telegram API. If already registered, returns existing data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -951,7 +951,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat customer baru via WhatsApp. Memvalidasi nomor ke WhatsApp API. Jika sudah terdaftar, kembalikan data yang ada.",
+                "description": "Create a new customer via WhatsApp. Validates the number against the WhatsApp API. If already registered, returns existing data.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1020,7 +1020,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail customer berdasarkan ID",
+                "description": "Get customer details by ID",
                 "produces": [
                     "application/json"
                 ],
@@ -1143,7 +1143,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua pengaturan ketersediaan delivery beserta nama delivery yang berelasi",
+                "description": "Get all delivery availability settings along with their associated delivery names",
                 "produces": [
                     "application/json"
                 ],
@@ -1201,7 +1201,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat pengaturan ketersediaan delivery baru, field type=available/not available",
+                "description": "Create a new delivery availability setting, field type=available/not available",
                 "consumes": [
                     "application/json"
                 ],
@@ -1264,7 +1264,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail pengaturan ketersediaan delivery berdasarkan sub group name",
+                "description": "Get delivery availability setting details by sub group name",
                 "produces": [
                     "application/json"
                 ],
@@ -1332,7 +1332,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update pengaturan ketersediaan delivery berdasarkan sub group name, field type=available/not available",
+                "description": "Update a delivery availability setting by sub group name, field type=available/not available",
                 "consumes": [
                     "application/json"
                 ],
@@ -1400,7 +1400,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus pengaturan ketersediaan delivery berdasarkan sub group name",
+                "description": "Delete a delivery availability setting by sub group name",
                 "produces": [
                     "application/json"
                 ],
@@ -1458,7 +1458,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua pengaturan delivery",
+                "description": "Get all delivery settings",
                 "produces": [
                     "application/json"
                 ],
@@ -1516,7 +1516,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat pengaturan delivery baru",
+                "description": "Create a new delivery setting",
                 "consumes": [
                     "application/json"
                 ],
@@ -1579,7 +1579,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail pengaturan delivery berdasarkan subgroup name",
+                "description": "Get delivery setting details by subgroup name",
                 "produces": [
                     "application/json"
                 ],
@@ -1647,7 +1647,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update pengaturan delivery berdasarkan sub group name",
+                "description": "Update a delivery setting by sub group name",
                 "consumes": [
                     "application/json"
                 ],
@@ -1715,7 +1715,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus pengaturan delivery berdasarkan sub group name",
+                "description": "Delete a delivery setting by sub group name",
                 "produces": [
                     "application/json"
                 ],
@@ -1911,7 +1911,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua order di kitchen display berdasarkan status",
+                "description": "Get all orders in the kitchen display filtered by status",
                 "produces": [
                     "application/json"
                 ],
@@ -2084,7 +2084,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua order payment dengan pagination",
+                "description": "Get all order payments with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -2153,7 +2153,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail order payment berdasarkan ID",
+                "description": "Get order payment details by ID",
                 "produces": [
                     "application/json"
                 ],
@@ -2223,7 +2223,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update status order payment",
+                "description": "Update the status of an order payment",
                 "consumes": [
                     "application/json"
                 ],
@@ -2293,7 +2293,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua order dengan pagination",
+                "description": "Get all orders with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -2360,7 +2360,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat order baru. Customer dicek berdasarkan phone number — jika sudah ada, data customer lama dipakai. Jika belum ada, customer baru dibuat.",
+                "description": "Create a new order. The customer is looked up by phone number — if already exists, existing customer data is used; otherwise a new customer is created.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2435,7 +2435,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail order beserta customer, produk, dan payment",
+                "description": "Get order details including customer, products, and payment",
                 "produces": [
                     "application/json"
                 ],
@@ -2575,7 +2575,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua kategori produk, filter berdasarkan visibility",
+                "description": "Get all product categories, filtered by visibility",
                 "produces": [
                     "application/json"
                 ],
@@ -2639,7 +2639,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat kategori produk baru",
+                "description": "Create a new product category",
                 "consumes": [
                     "application/json"
                 ],
@@ -2702,7 +2702,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail kategori produk beserta produk yang berelasi",
+                "description": "Get product category details along with its associated products",
                 "produces": [
                     "application/json"
                 ],
@@ -2770,7 +2770,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update kategori produk berdasarkan ID",
+                "description": "Update a product category by ID",
                 "consumes": [
                     "application/json"
                 ],
@@ -2838,7 +2838,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus kategori produk berdasarkan ID",
+                "description": "Delete a product category by ID",
                 "produces": [
                     "application/json"
                 ],
@@ -2896,7 +2896,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua produk dengan pagination",
+                "description": "Get all products with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -2963,7 +2963,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat produk baru beserta gambar dan kategori",
+                "description": "Create a new product along with images and categories",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -2983,35 +2983,35 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Nama produk",
+                        "description": "Product name",
                         "name": "name",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "number",
-                        "description": "Berat produk",
+                        "description": "Product weight",
                         "name": "weight",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "number",
-                        "description": "Harga jual",
+                        "description": "Selling price",
                         "name": "price",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "number",
-                        "description": "Harga asli",
+                        "description": "Original price",
                         "name": "original_price",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "Deskripsi produk",
+                        "description": "Product description",
                         "name": "description",
                         "in": "formData"
                     },
@@ -3024,7 +3024,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "Stok habis",
+                        "description": "Out of stock",
                         "name": "is_out_of_stock",
                         "in": "formData"
                     },
@@ -3040,7 +3040,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "file",
-                        "description": "Gambar produk",
+                        "description": "Product images",
                         "name": "images",
                         "in": "formData"
                     }
@@ -3080,7 +3080,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail produk berdasarkan ID",
+                "description": "Get product details by ID",
                 "produces": [
                     "application/json"
                 ],
@@ -3136,7 +3136,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update produk beserta gambar dan kategori",
+                "description": "Update a product along with images and categories",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -3163,35 +3163,35 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Nama produk",
+                        "description": "Product name",
                         "name": "name",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "number",
-                        "description": "Berat produk",
+                        "description": "Product weight",
                         "name": "weight",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "number",
-                        "description": "Harga jual",
+                        "description": "Selling price",
                         "name": "price",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "number",
-                        "description": "Harga asli",
+                        "description": "Original price",
                         "name": "original_price",
                         "in": "formData",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "Deskripsi produk",
+                        "description": "Product description",
                         "name": "description",
                         "in": "formData"
                     },
@@ -3204,13 +3204,13 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "Stok habis",
+                        "description": "Out of stock",
                         "name": "is_out_of_stock",
                         "in": "formData"
                     },
                     {
                         "type": "boolean",
-                        "description": "Status aktif",
+                        "description": "Active status",
                         "name": "is_active",
                         "in": "formData"
                     },
@@ -3226,7 +3226,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "file",
-                        "description": "Gambar produk baru (kosongkan jika tidak ingin mengubah)",
+                        "description": "New product images (leave empty to keep existing)",
                         "name": "images",
                         "in": "formData"
                     }
@@ -3264,7 +3264,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus produk beserta gambar dan kategori",
+                "description": "Delete a product along with its images and categories",
                 "produces": [
                     "application/json"
                 ],
@@ -3515,6 +3515,121 @@ const docTemplate = `{
                 }
             }
         },
+        "/client/{client_id}/settings/kds": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns whether Kitchen Display System is enabled for the given client. Accessible by SuperAdmin and the Client itself.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Get KDS status for a client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/helpers.ApiResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "SuperAdmin sets whether KDS is enabled for the given client. Body: {\"enabled\": true/false}",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Settings"
+                ],
+                "summary": "Enable or disable KDS for a client",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "KDS toggle",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/client/{client_id}/telegram/bot-token": {
             "patch": {
                 "security": [
@@ -3586,7 +3701,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Connect tenant's WhatsApp Business account via Meta Embedded Signup. Frontend sends code + waba_id dari Embedded Signup callback, backend tukar code dengan access token.",
+                "description": "Connect tenant's WhatsApp Business account via Meta Embedded Signup. Frontend sends code + waba_id from Embedded Signup callback, backend exchanges code for access token.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3606,7 +3721,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "code dan waba_id dari Embedded Signup",
+                        "description": "code and waba_id from Embedded Signup",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -3729,6 +3844,105 @@ const docTemplate = `{
                 }
             }
         },
+        "/client/{client_id}/whatsapp/whatsmeow/disconnect": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Logs out and removes the personal WhatsApp (whatsmeow) session for the tenant.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp Whatsmeow"
+                ],
+                "summary": "Disconnect WhatsApp Whatsmeow",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/whatsapp/whatsmeow/qr": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "SSE endpoint that streams QR codes for pairing a personal WhatsApp number. Connect with EventSource in the browser. Events: \"qr\" (scan the code), \"connected\" (success), \"timeout\", \"error\".",
+                "produces": [
+                    "text/event-stream"
+                ],
+                "tags": [
+                    "WhatsApp Whatsmeow"
+                ],
+                "summary": "Stream WhatsApp QR Code (whatsmeow)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK"
+                    }
+                }
+            }
+        },
+        "/client/{client_id}/whatsapp/whatsmeow/status": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns whether the tenant's personal WhatsApp (whatsmeow) is connected.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "WhatsApp Whatsmeow"
+                ],
+                "summary": "WhatsApp Whatsmeow Connection Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/helpers.ApiResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/payments/client/{client_id}/checkout/{order_id}": {
             "post": {
                 "security": [
@@ -3736,7 +3950,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "[BELUM DIGUNAKAN] Buat sesi pembayaran Stripe untuk order milik tenant (Stripe per tenant). Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.",
+                "description": "[NOT YET IN USE] Create a Stripe payment session for a tenant order (per-tenant Stripe). This endpoint is not yet active as the tenant order payment feature is still under development.",
                 "produces": [
                     "application/json"
                 ],
@@ -3806,7 +4020,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "[BELUM DIGUNAKAN] Ambil semua invoice order milik tenant yang sedang login dengan pagination. Endpoint ini belum aktif digunakan karena fitur pembayaran order tenant masih dalam pengembangan.",
+                "description": "[NOT YET IN USE] Get all order invoices for the currently logged-in tenant with pagination. This endpoint is not yet active as the tenant order payment feature is still under development.",
                 "produces": [
                     "application/json"
                 ],
@@ -4016,7 +4230,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat sesi pembayaran untuk pembelian plan (platform Aidia). Gunakan query param ` + "`" + `gateway` + "`" + ` untuk memilih gateway (stripe / hitpay). Jika kosong, pakai gateway default dari konfigurasi.",
+                "description": "Create a payment session for purchasing a plan (Aidia platform). Use the ` + "`" + `gateway` + "`" + ` query param to select a gateway (stripe / hitpay). If empty, uses the default gateway from configuration.",
                 "produces": [
                     "application/json"
                 ],
@@ -4131,7 +4345,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua invoice pembelian plan milik tenant yang sedang login dengan pagination",
+                "description": "Get all plan purchase invoices for the currently logged-in tenant with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -4193,7 +4407,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil detail invoice pembelian plan berdasarkan invoice ID",
+                "description": "Get plan purchase invoice details by invoice ID",
                 "produces": [
                     "application/json"
                 ],
@@ -4256,7 +4470,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat ulang sesi pembayaran untuk invoice yang belum dibayar. Gunakan query param ` + "`" + `gateway` + "`" + ` untuk memilih gateway (stripe / hitpay).",
+                "description": "Recreate a payment session for an unpaid invoice. Use the ` + "`" + `gateway` + "`" + ` query param to select a gateway (stripe / hitpay).",
                 "produces": [
                     "application/json"
                 ],
@@ -4452,7 +4666,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua plan dengan pagination",
+                "description": "Get all plans with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -4506,7 +4720,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat plan baru (Hanya untuk SuperAdmin)",
+                "description": "Create a new plan (SuperAdmin only)",
                 "consumes": [
                     "application/json"
                 ],
@@ -4556,7 +4770,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil data plan berdasarkan plan_id",
+                "description": "Get plan data by plan_id",
                 "produces": [
                     "application/json"
                 ],
@@ -4611,7 +4825,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update plan berdasarkan plan_id (Hanya untuk SuperAdmin)",
+                "description": "Update a plan by plan_id (SuperAdmin only)",
                 "consumes": [
                     "application/json"
                 ],
@@ -4666,7 +4880,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus plan berdasarkan plan_id (Hanya untuk SuperAdmin)",
+                "description": "Delete a plan by plan_id (SuperAdmin only)",
                 "produces": [
                     "application/json"
                 ],
@@ -4711,7 +4925,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Toggle status aktif plan berdasarkan plan_id (Hanya untuk SuperAdmin)",
+                "description": "Toggle the active status of a plan by plan_id (SuperAdmin only)",
                 "produces": [
                     "application/json"
                 ],
@@ -4751,7 +4965,7 @@ const docTemplate = `{
         },
         "/roles": {
             "get": {
-                "description": "Ambil semua data role",
+                "description": "Retrieve all role data",
                 "produces": [
                     "application/json"
                 ],
@@ -4802,7 +5016,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil data setting integrasi. SuperAdmin mendapat semua data, Client hanya mendapat data Telegram",
+                "description": "Get integration settings data. SuperAdmin receives all data; Client only receives Telegram data",
                 "produces": [
                     "application/json"
                 ],
@@ -4851,7 +5065,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil data setting notifikasi",
+                "description": "Get notification settings data",
                 "produces": [
                     "application/json"
                 ],
@@ -4900,7 +5114,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update value setting berdasarkan subgroup name",
+                "description": "Update setting values by subgroup name",
                 "consumes": [
                     "application/json"
                 ],
@@ -4958,7 +5172,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil status subscription aktif tenant yang sedang login.\nMengembalikan info plan aktif (single/multiple), token usage, dan pesan status.\nJika tidak ada plan aktif, kembalikan info free plan usage.",
+                "description": "Get the active subscription status of the currently logged-in tenant.\nReturns active plan info (single/multiple), token usage, and status message.\nIf no active plan exists, returns free plan usage info.",
                 "produces": [
                     "application/json"
                 ],
@@ -5067,7 +5281,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua user dengan pagination",
+                "description": "Get all users with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -5121,7 +5335,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Buat user baru role admin / client, untuk data role id didapetin dari manggil api roles",
+                "description": "Create a new user with role admin / client. The role ID is obtained by calling the roles API.",
                 "consumes": [
                     "application/json"
                 ],
@@ -5171,7 +5385,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Ambil semua user role client dengan pagination",
+                "description": "Get all users with the client role, with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -5227,7 +5441,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Filter user berdasarkan name, email, dan role dengan pagination",
+                "description": "Filter users by name, email, and role with pagination",
                 "produces": [
                     "application/json"
                 ],
@@ -5296,7 +5510,7 @@ const docTemplate = `{
         },
         "/users/{user_id}": {
             "get": {
-                "description": "Ambil data user berdasarkan user_id",
+                "description": "Get user data by user_id",
                 "produces": [
                     "application/json"
                 ],
@@ -5351,7 +5565,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Hapus user berdasarkan user_id",
+                "description": "Delete a user by user_id",
                 "produces": [
                     "application/json"
                 ],
@@ -5396,7 +5610,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update profile user login role client berdasarkan user_id",
+                "description": "Update the profile of a logged-in user with the client role by user_id",
                 "consumes": [
                     "application/json"
                 ],
@@ -5453,7 +5667,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Update profile user login role yang bukan client berdasarkan user_id",
+                "description": "Update the profile of a logged-in user with a non-client role by user_id",
                 "consumes": [
                     "application/json"
                 ],
@@ -5510,7 +5724,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Edit user data lain berdasarkan user_id",
+                "description": "Edit other user data by user_id",
                 "consumes": [
                     "application/json"
                 ],
@@ -5703,7 +5917,7 @@ const docTemplate = `{
             "properties": {
                 "message": {
                     "type": "string",
-                    "example": "Halo, ada yang bisa kami bantu?"
+                    "example": "Hello, how can we help you?"
                 }
             }
         },
@@ -5718,6 +5932,10 @@ const docTemplate = `{
                     "type": "string",
                     "maxLength": 50
                 },
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 150
@@ -5727,6 +5945,10 @@ const docTemplate = `{
                     "maxLength": 5
                 },
                 "phone_number": {
+                    "type": "string",
+                    "maxLength": 20
+                },
+                "postal_code": {
                     "type": "string",
                     "maxLength": 20
                 },
@@ -5743,9 +5965,17 @@ const docTemplate = `{
                 "username"
             ],
             "properties": {
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 150
+                },
+                "postal_code": {
+                    "type": "string",
+                    "maxLength": 20
                 },
                 "username": {
                     "type": "string",
@@ -5761,6 +5991,10 @@ const docTemplate = `{
                 "phone_number"
             ],
             "properties": {
+                "address": {
+                    "type": "string",
+                    "maxLength": 255
+                },
                 "name": {
                     "type": "string",
                     "maxLength": 150
@@ -5772,6 +6006,10 @@ const docTemplate = `{
                 "phone_number": {
                     "type": "string",
                     "maxLength": 20
+                },
+                "postal_code": {
+                    "type": "string",
+                    "maxLength": 20
                 }
             }
         },
@@ -5779,6 +6017,9 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "account_type": {
+                    "type": "string"
+                },
+                "address": {
                     "type": "string"
                 },
                 "created_at": {
@@ -5797,6 +6038,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "phone_number": {
+                    "type": "string"
+                },
+                "postal_code": {
                     "type": "string"
                 },
                 "updated_at": {
@@ -6308,15 +6552,15 @@ const docTemplate = `{
             ],
             "properties": {
                 "code": {
-                    "description": "dari Embedded Signup callback",
+                    "description": "from Embedded Signup callback",
                     "type": "string"
                 },
                 "phone_number_id": {
-                    "description": "dari message event, opsional",
+                    "description": "from message event, optional",
                     "type": "string"
                 },
                 "waba_id": {
-                    "description": "dari message event WA_EMBEDDED_SIGNUP",
+                    "description": "from WA_EMBEDDED_SIGNUP message event",
                     "type": "string"
                 }
             }
@@ -7020,6 +7264,10 @@ const docTemplate = `{
                 "product": {
                     "type": "string",
                     "example": "Show product name, price, photo, and description."
+                },
+                "store_operational": {
+                    "type": "string",
+                    "example": "{\"monday\":{\"start\":\"09:00\",\"end\":\"21:00\",\"closed\":false}}"
                 }
             }
         },
@@ -7090,8 +7338,7 @@ const docTemplate = `{
         "setting.UpdateSettingItem": {
             "type": "object",
             "required": [
-                "name",
-                "value"
+                "name"
             ],
             "properties": {
                 "name": {
@@ -7541,7 +7788,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "Format: \"Bearer {token}\" — paste token dari login response, accessToken",
+            "description": "Format: \"Bearer {token}\" — paste the token from the login response (accessToken)",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -7552,7 +7799,7 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "data.ai-dia.com",
+	Host:             "localhost:8005",
 	BasePath:         "/api/v1",
 	Schemes:          []string{},
 	Title:            "AI-Dia API",

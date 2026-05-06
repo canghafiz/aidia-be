@@ -24,14 +24,19 @@ func (j *JSONB) Scan(value interface{}) error {
 		return nil
 	}
 
-	bytes, ok := value.([]byte)
-	if !ok {
-		return fmt.Errorf("failed to scan JSONB: value is not []byte")
+	var b []byte
+	switch v := value.(type) {
+	case []byte:
+		b = v
+	case string:
+		b = []byte(v)
+	default:
+		return fmt.Errorf("failed to scan JSONB: unsupported type %T", value)
 	}
 
 	// Unmarshal into alias type to avoid infinite recursion
 	type jsonbAlias JSONB
-	return json.Unmarshal(bytes, (*jsonbAlias)(j))
+	return json.Unmarshal(b, (*jsonbAlias)(j))
 }
 
 // MarshalJSON implements json.Marshaler interface
@@ -51,4 +56,29 @@ func (j *JSONB) UnmarshalJSON(data []byte) error {
 	// Unmarshal into alias type to avoid infinite recursion
 	type jsonbAlias JSONB
 	return json.Unmarshal(data, (*jsonbAlias)(j))
+}
+
+// JSONBStringArray stores []string as PostgreSQL JSONB
+type JSONBStringArray []string
+
+func (a JSONBStringArray) Value() (driver.Value, error) {
+	if a == nil {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(a)
+}
+
+func (a *JSONBStringArray) Scan(value interface{}) error {
+	if value == nil {
+		*a = []string{}
+		return nil
+	}
+	switch v := value.(type) {
+	case []byte:
+		return json.Unmarshal(v, a)
+	case string:
+		return json.Unmarshal([]byte(v), a)
+	default:
+		return fmt.Errorf("failed to scan JSONBStringArray: unsupported type %T", value)
+	}
 }

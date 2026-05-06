@@ -74,7 +74,7 @@ func (repo *TenantPlanRepoImpl) GetByPaymentSessionID(db *gorm.DB, sessionID str
 	return &tenantPlan, nil
 }
 
-// GetLastSequenceToday pakai FOR UPDATE untuk hindari race condition
+// GetLastSequenceToday uses FOR UPDATE to prevent race conditions
 func (repo *TenantPlanRepoImpl) GetLastSequenceToday(db *gorm.DB) (int, error) {
 	var count int64
 	today := time.Now().Format("20060102")

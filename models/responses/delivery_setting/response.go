@@ -3,10 +3,12 @@ package delivery_setting
 import "backend/models/domains"
 
 type DeliverySettingResponse struct {
-	SubGroupName string `json:"sub_group_name"`
-	Name         string `json:"name"`
-	IsVisible    bool   `json:"is_visible"`
-	Description  string `json:"description"`
+	SubGroupName string  `json:"sub_group_name"`
+	Name         string  `json:"name"`
+	IsVisible    bool    `json:"is_visible"`
+	Description  string  `json:"description"`
+	DeliveryType string  `json:"delivery_type"`
+	Charge       float64 `json:"charge"`
 }
 
 func ToDeliverySettingResponse(d domains.DeliverySetting) DeliverySettingResponse {
@@ -15,6 +17,8 @@ func ToDeliverySettingResponse(d domains.DeliverySetting) DeliverySettingRespons
 		Name:         d.Name,
 		IsVisible:    d.IsVisible,
 		Description:  d.Description,
+		DeliveryType: d.DeliveryType,
+		Charge:       d.Charge,
 	}
 }
 

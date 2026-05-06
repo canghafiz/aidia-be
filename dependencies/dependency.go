@@ -3,9 +3,11 @@ package dependencies
 import (
 	"backend/controllers"
 	implCont "backend/controllers/impl"
+	"backend/helpers"
 	"backend/models/repositories"
 	"backend/models/repositories/impl"
 	implServ "backend/models/services/impl"
+	"log"
 
 	"github.com/go-playground/validator/v10"
 	"gorm.io/gorm"
@@ -24,6 +26,7 @@ type Dependency struct {
 	PaymentCont                     controllers.PaymentCont
 	SubsCont                        controllers.SubsCont
 	ProductCategoryCont             controllers.ProductCategoryCont
+	ProductTagCont                  controllers.ProductTagCont
 	DeliverySettingCont             controllers.DeliverySettingCont
 	DeliveryAvailabilitySettingCont controllers.DeliveryAvailabilitySettingCont
 	ProductCont                     controllers.ProductCont
@@ -35,9 +38,19 @@ type Dependency struct {
 	TelegramCont                    controllers.TelegramCont
 	WhatsAppCont                    controllers.WhatsAppCont
 	WhatsAppOAuthCont               controllers.WhatsAppOAuthCont
+	WhatsAppWhatsmeowCont           controllers.WhatsAppWhatsmeowCont
 }
 
 func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *Dependency {
+	// Whatsmeow hub — initialises session storage and reconnects saved sessions.
+	// Non-fatal: if init fails (e.g. DB not ready), hub is nil and whatsmeow features are disabled.
+	var whatsmeowHub *helpers.WhatsmeowHub
+	if hub, err := helpers.NewWhatsmeowHub(db); err != nil {
+		log.Printf("[Dependency] WhatsmeowHub init failed (whatsmeow disabled): %v", err)
+	} else {
+		whatsmeowHub = hub
+	}
+
 	// Repo
 	userRepo := impl.NewUserRepoImpl()
 	roleRepo := impl.NewRoleRepoImpl()
@@ -48,6 +61,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	tenantPlanRepo := impl.NewTenantPlanRepoImpl()
 	tenantUsageRepo := impl.NewTenantUsageRepoImpl()
 	productCategoryRepo := impl.NewProductCategoryRepoImpl()
+	productTagRepo := impl.NewProductTagRepoImpl()
 	deliverySettingRepo := impl.NewDeliverySettingRepoImpl()
 	deliveryAvailabilitySettingRepo := impl.NewDeliveryAvailabilitySettingRepoImpl()
 	productRepo := impl.NewProductRepoImpl()
@@ -70,17 +84,18 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	paymentServ := implServ.NewPaymentServImpl(db, jwtKey, userRepo, tenantPlanRepo, planRepo, tenantRepo, settingRepo, orderPaymentRepo, orderRepo)
 	subsServ := implServ.NewSubsServImpl(db, jwtKey, tenantRepo, tenantUsageRepo)
 	productCategoryServ := implServ.NewProductCategoryServImpl(db, jwtKey, validator, userRepo, productCategoryRepo)
+	productTagServ := implServ.NewProductTagServImpl(db, validator, userRepo, productTagRepo)
 	deliverySettingServ := implServ.NewDeliverySettingServImpl(db, validator, userRepo, deliverySettingRepo)
 	deliveryAvailabilitySettingServ := implServ.NewDeliveryAvailabilitySettingServImpl(db, validator, userRepo, deliveryAvailabilitySettingRepo, deliverySettingRepo)
 	fileServ := implServ.NewFileServImpl()
-	productServ := implServ.NewProductServImpl(db, validator, userRepo, productRepo, deliverySettingRepo, fileServ)
+	productServ := implServ.NewProductServImpl(db, validator, userRepo, productRepo, deliverySettingRepo, productTagRepo, fileServ)
 	customerServ := implServ.NewCustomerServImpl(db, validator, userRepo, customerRepo, guestRepo, guestMessageRepo, settingRepo, whatsAppConnectionRepo, jwtKey)
-	orderServ := implServ.NewOrderServImpl(db, jwtKey, validator, userRepo, customerRepo, orderRepo, productRepo, deliverySettingRepo)
+	orderServ := implServ.NewOrderServImpl(db, jwtKey, validator, userRepo, customerRepo, orderRepo, productRepo, deliverySettingRepo, settingRepo, whatsmeowHub)
 	orderPaymentServ := implServ.NewOrderPaymentServImpl(db, jwtKey, validator, userRepo, orderPaymentRepo)
 	kitchenOrderServ := implServ.NewKitchenOrderServImpl(db, jwtKey, validator, userRepo, kitchenOrderRepo)
-	chatServ := implServ.NewChatServImpl(db, jwtKey, guestRepo, guestMessageRepo, userRepo, settingRepo, customerRepo)
+	chatServ := implServ.NewChatServImpl(db, jwtKey, guestRepo, guestMessageRepo, userRepo, settingRepo, customerRepo, whatsmeowHub)
 
-	return &Dependency{
+	dep := &Dependency{
 		JwtKey: jwtKey,
 		Db:     db,
 
@@ -93,6 +108,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		PaymentCont:                     implCont.NewPaymentContImpl(paymentServ),
 		SubsCont:                        implCont.NewSubsContImpl(subsServ),
 		ProductCategoryCont:             implCont.NewProductCategoryContImpl(productCategoryServ),
+		ProductTagCont:                  implCont.NewProductTagContImpl(productTagServ),
 		DeliverySettingCont:             implCont.NewDeliverySettingContImpl(deliverySettingServ),
 		DeliveryAvailabilitySettingCont: implCont.NewDeliveryAvailabilitySettingContImpl(deliveryAvailabilitySettingServ),
 		ProductCont:                     implCont.NewProductContImpl(productServ),
@@ -101,8 +117,19 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		OrderPaymentCont:                implCont.NewOrderPaymentContImpl(orderPaymentServ),
 		KitchenOrderCont:                implCont.NewKitchenOrderContImpl(kitchenOrderServ, userRepo, db),
 		ChatCont:                        implCont.NewChatContImpl(chatServ, guestRepo, userRepo, db, jwtKey),
-		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, tenantUsageRepo, n8nTelegramServ, db),
-		WhatsAppCont:                    implCont.NewWhatsAppContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, orderRepo, orderPaymentRepo, customerRepo, tenantUsageRepo, n8nWhatsAppServ, whatsAppConnectionRepo, db),
+		TelegramCont:                    implCont.NewTelegramContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, productTagRepo, deliverySettingRepo, orderRepo, orderPaymentRepo, customerRepo, tenantUsageRepo, n8nTelegramServ, db),
+		WhatsAppCont:                    implCont.NewWhatsAppContImpl(guestRepo, guestMessageRepo, settingRepo, userRepo, productRepo, productTagRepo, deliverySettingRepo, orderRepo, orderPaymentRepo, customerRepo, tenantUsageRepo, n8nWhatsAppServ, whatsAppConnectionRepo, whatsmeowHub, db),
 		WhatsAppOAuthCont:               implCont.NewWhatsAppOAuthContImpl(whatsAppConnectionRepo, settingRepo, db, jwtKey),
+		WhatsAppWhatsmeowCont:           implCont.NewWhatsAppWhatsmeowContImpl(whatsmeowHub, db, jwtKey),
 	}
+
+	if whatsmeowHub != nil {
+		waCont := dep.WhatsAppCont.(*implCont.WhatsAppContImpl)
+		whatsmeowHub.SetMessageHandler(func(schema, from, name, text, replyJID string) {
+			waCont.ProcessWhatsmeowMessage(schema, from, name, text, replyJID)
+		})
+		whatsmeowHub.Start()
+	}
+
+	return dep
 }

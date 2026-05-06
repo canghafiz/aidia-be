@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS :schema_name.product (
     description TEXT,
     delivery_id UUID        NOT NULL,
     is_out_of_stock BOOLEAN NOT NULL DEFAULT FALSE,
+    product_quantity INTEGER NOT NULL DEFAULT 0,
     is_active  BOOLEAN       NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ   NOT NULL DEFAULT NOW()
@@ -135,6 +136,35 @@ CREATE TABLE IF NOT EXISTS :schema_name.product_category_dto (
     );
 
 -- ============================================================
+-- Product Tag
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS :schema_name.product_tag (
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    name       VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_tag_name ON :schema_name.product_tag (name);
+
+CREATE TABLE IF NOT EXISTS :schema_name.product_tag_dto (
+    product_id UUID NOT NULL,
+    tag_id     UUID NOT NULL,
+
+    CONSTRAINT pk_product_tag_dto
+        PRIMARY KEY (product_id, tag_id),
+
+    CONSTRAINT fk_product_tag_product
+        FOREIGN KEY (product_id) REFERENCES :schema_name.product (id)
+        ON DELETE CASCADE,
+
+    CONSTRAINT fk_product_tag_tag
+        FOREIGN KEY (tag_id) REFERENCES :schema_name.product_tag (id)
+        ON DELETE CASCADE
+);
+
+-- ============================================================
 -- Customer
 -- ============================================================
 CREATE TYPE :schema_name.customer_account AS ENUM (
@@ -148,6 +178,8 @@ CREATE TABLE IF NOT EXISTS :schema_name.customer (
     username           VARCHAR(100) NULL,
     phone_country_code VARCHAR(5)   NULL,
     phone_number       VARCHAR(20)  NULL,
+    address            VARCHAR(255) NULL,
+    postal_code        VARCHAR(20)  NULL,
     account_type       :schema_name.customer_account  NOT NULL DEFAULT 'Telegram',
     created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
@@ -175,6 +207,7 @@ CREATE TABLE IF NOT EXISTS :schema_name.orders (
     delivery_sub_group_name VARCHAR(100)                    NOT NULL,
     street_address          VARCHAR(100)                    NOT NULL,
     postal_code             VARCHAR(20)                     NOT NULL,
+    tag_filter_ids          JSONB                           NOT NULL DEFAULT '[]'::jsonb,
     created_at              TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMPTZ                     NOT NULL DEFAULT NOW(),
 
@@ -278,29 +311,60 @@ CREATE TABLE IF NOT EXISTS :schema_name.setting (
                                               CONSTRAINT uq_setting_subgroup_name UNIQUE (sub_group_name, name)
 );
 
--- Seed from public.setting as template
+-- Seed notification settings from public.setting as template
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value)
 SELECT group_name, sub_group_name, name, value
 FROM public.setting
 WHERE group_name = 'notification'
-   OR (group_name = 'integration' AND sub_group_name = 'Telegram')
+ON CONFLICT (sub_group_name, name) DO NOTHING;
+
+-- Telegram integration defaults
+INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
+    ('integration', 'Telegram', 'telegram-bot-token', ''),
+    ('integration', 'Telegram', 'bot-enabled',         'true'),
+    ('integration', 'Telegram', 'manual-mode',         'false'),
+    ('integration', 'Telegram', 'timezone',            'Asia/Singapore')
+ON CONFLICT (sub_group_name, name) DO NOTHING;
+
+-- WhatsApp integration defaults
+INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
+    ('integration', 'WhatsApp', 'whatsapp-phone-number-id', ''),
+    ('integration', 'WhatsApp', 'whatsapp-token',           ''),
+    ('integration', 'WhatsApp', 'whatsapp-api-version',     'v20.0'),
+    ('integration', 'WhatsApp', 'whatsapp-webhook-token',   ''),
+    ('integration', 'WhatsApp', 'bot-enabled',              'true'),
+    ('integration', 'WhatsApp', 'manual-mode',              'false')
 ON CONFLICT (sub_group_name, name) DO NOTHING;
 
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
     ('integration', 'Stripe Client', 'stripe-client-secret-key',      '{stripe-client-secret-key}'),
     ('integration', 'Stripe Client', 'stripe-client-public-key',      '{stripe-client-public-key}'),
-    ('integration', 'Stripe Client', 'stripe-client-webhook-secret',  '{stripe-client-webhook-secret}'),
-    ('integration', 'HitPay Client', 'hitpay-client-api-key',         ''),
-    ('integration', 'HitPay Client', 'hitpay-client-webhook-salt',    '');
+    ('integration', 'Stripe Client', 'stripe-client-webhook-secret',  '{stripe-client-webhook-secret}');
 
--- AI Prompt settings (per section)
+-- AI Prompt settings — ai-operational-prompt and store-operational-hours use JSON format
 INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
-    ('ai_prompt', 'AI Product',     'ai-product-prompt',     'Explain our products clearly when customers ask. Mention name, price, and description. If a product is out of stock, inform the customer and suggest alternatives if available.'),
-    ('ai_prompt', 'AI Delivery',    'ai-delivery-prompt',    'We offer delivery to the zones listed. If the customer''s area is not listed, kindly inform them we do not cover that area yet.'),
-    ('ai_prompt', 'AI Operational', 'ai-operational-prompt', 'We are open Monday to Saturday, 08:00 - 21:00. We are closed on Sundays and national holidays.'),
-    ('ai_prompt', 'AI About Store', 'ai-about-store-prompt', 'We are a local store. We are here to help you find the right products and place your order. Feel free to ask anything about our store.'),
-    ('ai_prompt', 'AI FAQ',         'ai-faq-prompt',         'Q: How do I place an order? A: Just tell me you want to order and I will guide you. Q: Can I cancel? A: Contact us before the order is processed. Q: How long is delivery? A: Estimated 30-60 minutes.')
+    ('ai_prompt', 'AI Product',        'ai-product-prompt',       'Explain our products clearly when customers ask. Mention name, price, image and description. If a product is out of stock, inform the customer and suggest alternatives if available.'),
+    ('ai_prompt', 'AI Delivery',       'ai-delivery-prompt',      'We offer delivery to the zones listed. If the customer''s area is not listed, kindly inform them we do not cover that area yet.'),
+    ('ai_prompt', 'AI Operational',    'ai-operational-prompt',   '{"monday":{"start":"09:00","end":"21:00","closed":false},"tuesday":{"start":"09:00","end":"21:00","closed":false},"wednesday":{"start":"09:00","end":"21:00","closed":false},"thursday":{"start":"09:00","end":"21:00","closed":false},"friday":{"start":"09:00","end":"21:00","closed":false},"saturday":{"start":"09:00","end":"21:00","closed":false},"sunday":{"start":"09:00","end":"21:00","closed":true}}'),
+    ('ai_prompt', 'Store Operational', 'store-operational-hours', '{"monday":{"start":"09:00","end":"21:00","closed":false},"tuesday":{"start":"09:00","end":"21:00","closed":false},"wednesday":{"start":"09:00","end":"21:00","closed":false},"thursday":{"start":"09:00","end":"21:00","closed":false},"friday":{"start":"09:00","end":"21:00","closed":false},"saturday":{"start":"09:00","end":"21:00","closed":false},"sunday":{"start":"09:00","end":"21:00","closed":true}}'),
+    ('ai_prompt', 'AI About Store',    'ai-about-store-prompt',   'We are a local store. We are here to help you find the right products and place your order. Feel free to ask anything about our store.'),
+    ('ai_prompt', 'AI FAQ',            'ai-faq-prompt',           'Q: How do I place an order? A: Just tell me you want to order and I will guide you. Q: Can I cancel? A: Contact us before the order is processed. Q: How long is delivery? A: Estimated 30-60 minutes.')
 ON CONFLICT (sub_group_name, name) DO NOTHING;
+
+-- Default delivery option: Self Pick Up (pickup type, no charge)
+DO $$
+DECLARE
+    pickup_id UUID := gen_random_uuid();
+BEGIN
+    INSERT INTO :schema_name.setting (group_name, sub_group_name, name, value) VALUES
+        ('delivery', pickup_id::text, 'name',          'Self Pick Up'),
+        ('delivery', pickup_id::text, 'is_visible',    'true'),
+        ('delivery', pickup_id::text, 'description',   'Customer picks up the order directly.'),
+        ('delivery', pickup_id::text, 'delivery_type', 'Pickup'),
+        ('delivery', pickup_id::text, 'charge',        '0.00')
+    ON CONFLICT (sub_group_name, name) DO NOTHING;
+END;
+$$;
 
 -- ============================================================
 -- Kitchen Order
@@ -329,7 +393,16 @@ CREATE OR REPLACE FUNCTION :schema_name.fn_insert_kitchen_order()
     RETURNS TRIGGER AS $$
 DECLARE
     v_order_status VARCHAR(50);
+    v_kds_enabled  TEXT;
 BEGIN
+    SELECT value INTO v_kds_enabled
+    FROM :schema_name.setting
+    WHERE group_name = 'features' AND sub_group_name = 'KDS' AND name = 'kds_enabled';
+
+    IF COALESCE(v_kds_enabled, 'false') != 'true' THEN
+        RETURN NEW;
+    END IF;
+
     IF NEW.payment_status = 'Paid' AND OLD.payment_status != 'Paid' THEN
         SELECT status INTO v_order_status
         FROM :schema_name.orders
@@ -355,7 +428,16 @@ CREATE OR REPLACE FUNCTION :schema_name.fn_insert_kitchen_order_on_confirmed()
     RETURNS TRIGGER AS $$
 DECLARE
     v_payment_status VARCHAR(50);
+    v_kds_enabled    TEXT;
 BEGIN
+    SELECT value INTO v_kds_enabled
+    FROM :schema_name.setting
+    WHERE group_name = 'features' AND sub_group_name = 'KDS' AND name = 'kds_enabled';
+
+    IF COALESCE(v_kds_enabled, 'false') != 'true' THEN
+        RETURN NEW;
+    END IF;
+
     IF NEW.status = 'Confirmed' AND OLD.status != 'Confirmed' THEN
         SELECT payment_status INTO v_payment_status
         FROM :schema_name.order_payments

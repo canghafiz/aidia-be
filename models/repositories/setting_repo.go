@@ -11,4 +11,7 @@ type SettingRepo interface {
 	GetByGroupName(db *gorm.DB, schema, groupName string) ([]domains.Setting, error)
 	GetByGroupAndSubGroupName(db *gorm.DB, schema, groupName, subGroupName string) ([]domains.Setting, error)
 	UpdateBySubGroupName(db *gorm.DB, schema string, group []domains.Setting) error
+	GetByName(db *gorm.DB, schema, groupName, subGroupName, name string) (*domains.Setting, error)
+	UpsertByName(db *gorm.DB, schema, groupName, subGroupName, name, value string) error
+	DeleteByName(db *gorm.DB, schema, groupName, subGroupName, name string) error
 }

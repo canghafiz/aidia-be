@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// WAPhoneNumber representasi nomor telepon dari Meta Graph API
+// WAPhoneNumber represents a phone number from the Meta Graph API
 type WAPhoneNumber struct {
 	ID                 string `json:"id"`
 	DisplayPhoneNumber string `json:"display_phone_number"`
@@ -34,16 +34,16 @@ type metaPhoneNumbersResponse struct {
 
 var metaHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
-// ExchangeCodeForToken menukar OAuth code dari Embedded Signup menjadi access token
+// ExchangeCodeForToken exchanges an OAuth code from Embedded Signup for an access token
 func ExchangeCodeForToken(code string) (string, error) {
 	appID := os.Getenv("META_APP_ID")
 	appSecret := os.Getenv("META_APP_SECRET")
 
 	if appID == "" || appSecret == "" {
-		return "", fmt.Errorf("META_APP_ID atau META_APP_SECRET belum dikonfigurasi")
+		return "", fmt.Errorf("META_APP_ID or META_APP_SECRET is not configured")
 	}
 
-	// Untuk Embedded Signup (JS SDK), redirect_uri tidak boleh disertakan
+	// For Embedded Signup (JS SDK), redirect_uri must not be included
 	params := url.Values{}
 	params.Set("client_id", appID)
 	params.Set("client_secret", appSecret)
@@ -52,7 +52,7 @@ func ExchangeCodeForToken(code string) (string, error) {
 	apiURL := fmt.Sprintf("%s/oauth/access_token?%s", WhatsAppAPIURL, params.Encode())
 	resp, err := metaHTTPClient.Get(apiURL)
 	if err != nil {
-		return "", fmt.Errorf("gagal request token: %w", err)
+		return "", fmt.Errorf("failed to request token: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -60,7 +60,7 @@ func ExchangeCodeForToken(code string) (string, error) {
 
 	var result metaTokenResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("gagal parse response: %w", err)
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if result.Error != nil {
@@ -68,19 +68,19 @@ func ExchangeCodeForToken(code string) (string, error) {
 	}
 
 	if result.AccessToken == "" {
-		return "", fmt.Errorf("access token kosong dari Meta")
+		return "", fmt.Errorf("access token returned empty from Meta")
 	}
 
 	return result.AccessToken, nil
 }
 
-// ExtendToken menukar short-lived token menjadi long-lived token (~60 hari)
+// ExtendToken exchanges a short-lived token for a long-lived token (~60 days)
 func ExtendToken(shortToken string) (string, error) {
 	appID := os.Getenv("META_APP_ID")
 	appSecret := os.Getenv("META_APP_SECRET")
 
 	if appID == "" || appSecret == "" {
-		return "", fmt.Errorf("META_APP_ID atau META_APP_SECRET belum dikonfigurasi")
+		return "", fmt.Errorf("META_APP_ID or META_APP_SECRET is not configured")
 	}
 
 	params := url.Values{}
@@ -92,7 +92,7 @@ func ExtendToken(shortToken string) (string, error) {
 	apiURL := fmt.Sprintf("%s/oauth/access_token?%s", WhatsAppAPIURL, params.Encode())
 	resp, err := metaHTTPClient.Get(apiURL)
 	if err != nil {
-		return "", fmt.Errorf("gagal extend token: %w", err)
+		return "", fmt.Errorf("failed to extend token: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -100,7 +100,7 @@ func ExtendToken(shortToken string) (string, error) {
 
 	var result metaTokenResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("gagal parse response: %w", err)
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if result.Error != nil {
@@ -108,20 +108,20 @@ func ExtendToken(shortToken string) (string, error) {
 	}
 
 	if result.AccessToken == "" {
-		// Jika Meta tidak mengembalikan token baru, gunakan token lama
+		// If Meta does not return a new token, use the existing token
 		return shortToken, nil
 	}
 
 	return result.AccessToken, nil
 }
 
-// GetWABAPhoneNumbers mengambil daftar nomor telepon dari sebuah WABA
+// GetWABAPhoneNumbers retrieves the list of phone numbers for a given WABA
 func GetWABAPhoneNumbers(wabaID, accessToken string) ([]WAPhoneNumber, error) {
 	apiURL := fmt.Sprintf("%s/%s/phone_numbers?access_token=%s", WhatsAppAPIURL, wabaID, accessToken)
 
 	resp, err := metaHTTPClient.Get(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("gagal fetch phone numbers: %w", err)
+		return nil, fmt.Errorf("failed to fetch phone numbers: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -129,20 +129,20 @@ func GetWABAPhoneNumbers(wabaID, accessToken string) ([]WAPhoneNumber, error) {
 
 	var result metaPhoneNumbersResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("gagal parse phone numbers: %w", err)
+		return nil, fmt.Errorf("failed to parse phone numbers: %w", err)
 	}
 
 	return result.Data, nil
 }
 
-// ExchangeCodeForTokenWithURI menukar OAuth code dengan redirect URI yang eksplisit
-// Digunakan untuk OAuth Redirect Flow (bukan Embedded Signup)
+// ExchangeCodeForTokenWithURI exchanges an OAuth code using an explicit redirect URI
+// Used for OAuth Redirect Flow (not Embedded Signup)
 func ExchangeCodeForTokenWithURI(code, redirectURI string) (string, error) {
 	appID := os.Getenv("META_APP_ID")
 	appSecret := os.Getenv("META_APP_SECRET")
 
 	if appID == "" || appSecret == "" {
-		return "", fmt.Errorf("META_APP_ID atau META_APP_SECRET belum dikonfigurasi")
+		return "", fmt.Errorf("META_APP_ID or META_APP_SECRET is not configured")
 	}
 
 	params := url.Values{}
@@ -156,7 +156,7 @@ func ExchangeCodeForTokenWithURI(code, redirectURI string) (string, error) {
 	apiURL := fmt.Sprintf("%s/oauth/access_token?%s", WhatsAppAPIURL, params.Encode())
 	resp, err := metaHTTPClient.Get(apiURL)
 	if err != nil {
-		return "", fmt.Errorf("gagal request token: %w", err)
+		return "", fmt.Errorf("failed to request token: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -164,7 +164,7 @@ func ExchangeCodeForTokenWithURI(code, redirectURI string) (string, error) {
 
 	var result metaTokenResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", fmt.Errorf("gagal parse response: %w", err)
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if result.Error != nil {
@@ -172,13 +172,13 @@ func ExchangeCodeForTokenWithURI(code, redirectURI string) (string, error) {
 	}
 
 	if result.AccessToken == "" {
-		return "", fmt.Errorf("access token kosong dari Meta")
+		return "", fmt.Errorf("access token returned empty from Meta")
 	}
 
 	return result.AccessToken, nil
 }
 
-// WABAInfo representasi WhatsApp Business Account
+// WABAInfo represents a WhatsApp Business Account
 type WABAInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -197,11 +197,11 @@ type metaBusinessResponse struct {
 	Data []metaBusinessInfo `json:"data"`
 }
 
-// GetUserWABAs mengambil daftar WhatsApp Business Accounts yang dapat diakses user.
-// Strategi berlapis:
-// (1) /me/whatsapp_business_accounts — WABA langsung milik user
-// (2) /me/businesses → owned + client WABAs — WABA di bawah Business Manager
-// (3) /me/businesses?fields=client_whatsapp_business_accounts — WABA yang di-share ke bisnis ini
+// GetUserWABAs retrieves the list of WhatsApp Business Accounts accessible by the user.
+// Layered strategy:
+// (1) /me/whatsapp_business_accounts — WABAs directly owned by the user
+// (2) /me/businesses → owned + client WABAs — WABAs under Business Manager
+// (3) /me/businesses?fields=client_whatsapp_business_accounts — WABAs shared to this business
 func GetUserWABAs(accessToken string) ([]WABAInfo, error) {
 	seen := map[string]bool{}
 	var all []WABAInfo
@@ -223,7 +223,7 @@ func GetUserWABAs(accessToken string) ([]WABAInfo, error) {
 		log.Printf("[WA OAuth] /me/permissions: %s", string(permBody))
 	}
 
-	// 1. Langsung di user
+	// 1. Directly on the user
 	directURL := fmt.Sprintf("%s/me/whatsapp_business_accounts?fields=id,name&access_token=%s", WhatsAppAPIURL, accessToken)
 	direct, directRaw, _ := fetchWABAsFromURLDebug(directURL)
 	log.Printf("[WA OAuth] /me/whatsapp_business_accounts → %d results raw=%s", len(direct), directRaw)
@@ -232,11 +232,11 @@ func GetUserWABAs(accessToken string) ([]WABAInfo, error) {
 		return all, nil
 	}
 
-	// 2. Lewat Business Manager — ambil daftar bisnis dulu, lalu fetch WABA per bisnis
+	// 2. Via Business Manager — fetch the list of businesses first, then fetch WABAs per business
 	bizURL := fmt.Sprintf("%s/me/businesses?fields=id,name&access_token=%s", WhatsAppAPIURL, accessToken)
 	resp, err := metaHTTPClient.Get(bizURL)
 	if err != nil {
-		return nil, fmt.Errorf("gagal fetch businesses: %w", err)
+		return nil, fmt.Errorf("failed to fetch businesses: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -244,7 +244,7 @@ func GetUserWABAs(accessToken string) ([]WABAInfo, error) {
 
 	var bizResult metaBusinessResponse
 	if err := json.Unmarshal(body, &bizResult); err != nil {
-		return nil, fmt.Errorf("gagal parse businesses: %w", err)
+		return nil, fmt.Errorf("failed to parse businesses: %w", err)
 	}
 
 	log.Printf("[WA OAuth] businesses found: %d", len(bizResult.Data))
@@ -265,7 +265,7 @@ func GetUserWABAs(accessToken string) ([]WABAInfo, error) {
 	}
 
 	if len(all) == 0 {
-		return nil, fmt.Errorf("tidak ditemukan akun WhatsApp Business yang dapat diakses")
+		return nil, fmt.Errorf("no accessible WhatsApp Business account found")
 	}
 	return all, nil
 }
@@ -290,26 +290,26 @@ func fetchWABAsFromURLDebug(apiURL string) ([]WABAInfo, string, error) {
 	return result.Data, raw, nil
 }
 
-// SubscribeAppToWABA mendaftarkan app kita ke webhook events WABA milik tenant
+// SubscribeAppToWABA registers our app to the webhook events of a tenant's WABA
 func SubscribeAppToWABA(wabaID, accessToken string) error {
 	apiURL := fmt.Sprintf("%s/%s/subscribed_apps", WhatsAppAPIURL, wabaID)
 
 	req, err := http.NewRequest("POST", apiURL, nil)
 	if err != nil {
-		return fmt.Errorf("gagal buat request: %w", err)
+		return fmt.Errorf("failed to build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	resp, err := metaHTTPClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("gagal subscribe: %w", err)
+		return fmt.Errorf("failed to subscribe: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
 	log.Printf("[WA OAuth] subscribed_apps response status=%d body=%s", resp.StatusCode, string(body))
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("subscribe gagal status=%d body=%s", resp.StatusCode, string(body))
+		return fmt.Errorf("subscribe failed status=%d body=%s", resp.StatusCode, string(body))
 	}
 
 	return nil

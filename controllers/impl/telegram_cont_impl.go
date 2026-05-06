@@ -1,4 +1,4 @@
-package impl
+﻿package impl
 
 import (
 	"backend/helpers"
@@ -20,17 +20,19 @@ import (
 )
 
 type TelegramContImpl struct {
-	GuestRepo        repositories.GuestRepo
-	GuestMessageRepo repositories.GuestMessageRepo
-	SettingRepo      repositories.SettingRepo
-	UserRepo         repositories.UsersRepo
-	ProductRepo      repositories.ProductRepo
-	OrderRepo        repositories.OrderRepo
-	OrderPaymentRepo repositories.OrderPaymentRepo
-	CustomerRepo     repositories.CustomerRepo
-	TenantUsageRepo  repositories.TenantUsageRepo
-	N8NServ          services.N8NServ
-	Db               *gorm.DB
+	GuestRepo           repositories.GuestRepo
+	GuestMessageRepo    repositories.GuestMessageRepo
+	SettingRepo         repositories.SettingRepo
+	UserRepo            repositories.UsersRepo
+	ProductRepo         repositories.ProductRepo
+	ProductTagRepo      repositories.ProductTagRepo
+	DeliverySettingRepo repositories.DeliverySettingRepo
+	OrderRepo           repositories.OrderRepo
+	OrderPaymentRepo    repositories.OrderPaymentRepo
+	CustomerRepo        repositories.CustomerRepo
+	TenantUsageRepo     repositories.TenantUsageRepo
+	N8NServ             services.N8NServ
+	Db                  *gorm.DB
 }
 
 func NewTelegramContImpl(
@@ -39,6 +41,8 @@ func NewTelegramContImpl(
 	settingRepo repositories.SettingRepo,
 	userRepo repositories.UsersRepo,
 	productRepo repositories.ProductRepo,
+	productTagRepo repositories.ProductTagRepo,
+	deliverySettingRepo repositories.DeliverySettingRepo,
 	orderRepo repositories.OrderRepo,
 	orderPaymentRepo repositories.OrderPaymentRepo,
 	customerRepo repositories.CustomerRepo,
@@ -47,17 +51,19 @@ func NewTelegramContImpl(
 	db *gorm.DB,
 ) *TelegramContImpl {
 	return &TelegramContImpl{
-		GuestRepo:        guestRepo,
-		GuestMessageRepo: guestMessageRepo,
-		SettingRepo:      settingRepo,
-		UserRepo:         userRepo,
-		ProductRepo:      productRepo,
-		OrderRepo:        orderRepo,
-		OrderPaymentRepo: orderPaymentRepo,
-		CustomerRepo:     customerRepo,
-		TenantUsageRepo:  tenantUsageRepo,
-		N8NServ:          n8nServ,
-		Db:               db,
+		GuestRepo:           guestRepo,
+		GuestMessageRepo:    guestMessageRepo,
+		SettingRepo:         settingRepo,
+		UserRepo:            userRepo,
+		ProductRepo:         productRepo,
+		ProductTagRepo:      productTagRepo,
+		DeliverySettingRepo: deliverySettingRepo,
+		OrderRepo:           orderRepo,
+		OrderPaymentRepo:    orderPaymentRepo,
+		CustomerRepo:        customerRepo,
+		TenantUsageRepo:     tenantUsageRepo,
+		N8NServ:             n8nServ,
+		Db:                  db,
 	}
 }
 
@@ -190,7 +196,12 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 	// Find or create guest
 	guest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 	if err != nil {
-		placeholderByUsername, placeholderErr := cont.GuestRepo.FindByUsername(cont.Db, schema, payload.Message.From.Username)
+		tgUsername := payload.Message.From.Username
+		var placeholderByUsername *domains.Guest
+		var placeholderErr error
+		if tgUsername != "" {
+			placeholderByUsername, placeholderErr = cont.GuestRepo.FindByUsername(cont.Db, schema, tgUsername)
+		}
 		if placeholderErr == nil && placeholderByUsername != nil {
 			fullName := payload.Message.From.FirstName
 			if payload.Message.From.LastName != "" {
@@ -230,7 +241,7 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			if err := cont.GuestRepo.Update(cont.Db, schema, *placeholderByUsername); err == nil {
 				guest = placeholderByUsername
 				if isCustStart {
-					menu := "ðŸ‘‹ Hello! Welcome.\n\n"
+					menu := "👋 Hello! Welcome.\n\n"
 					menu += "What would you like to do?\n\n"
 					menu += "Type 1 - See Products\n"
 					menu += "Type 2 - Create Order\n"
@@ -238,9 +249,27 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 					menu += "Type 4 - FAQ\n\n"
 					menu += "Just type 1, 2, 3, or 4"
 					cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
-				} else {
-					cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, "ðŸ‘‹ Welcome! To complete your registration, please send your phone number.\n\nFormat: +628123456789\n\nâš ï¸ This is required to continue.")
+					ctx.JSON(200, gin.H{"status": "ok"})
+					return
 				}
+				// Not a deep-link start — save message and route to n8n registration flow
+				if text != "" {
+					incomingMsg := domains.GuestMessage{
+						GuestID:  guest.ID,
+						Role:     "user",
+						Type:     "text",
+						Message:  text,
+						IsHuman:  true,
+						IsActive: true,
+					}
+					cont.GuestMessageRepo.Create(cont.Db, schema, incomingMsg)
+					cont.broadcastMessage(user.UserID, guest.ID, guest.Name, text, "user", false)
+					now := time.Now()
+					guest.LastMessageAt = &now
+					guest.IsRead = false
+					cont.GuestRepo.Update(cont.Db, schema, *guest)
+				}
+				cont.handleAIMessage(tgClient, chatID, guest, text, schema, user.UserID, tenantID)
 				ctx.JSON(200, gin.H{"status": "ok"})
 				return
 			}
@@ -308,14 +337,24 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			menu += "Just type 1, 2, 3, or 4"
 			cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
 		} else {
-			menu := "Hello! Welcome.\n\n"
-			menu += "What would you like to do?\n\n"
-			menu += "Type 1 - See Products\n"
-			menu += "Type 2 - Create Order\n"
-			menu += "Type 3 - Check Order Status\n"
-			menu += "Type 4 - FAQ\n\n"
-			menu += "Just type 1, 2, 3, or 4"
-			cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
+			// New unregistered guest — save message then start registration via n8n
+			if text != "" {
+				incomingMsg := domains.GuestMessage{
+					GuestID:  guest.ID,
+					Role:     "user",
+					Type:     "text",
+					Message:  text,
+					IsHuman:  true,
+					IsActive: true,
+				}
+				cont.GuestMessageRepo.Create(cont.Db, schema, incomingMsg)
+				cont.broadcastMessage(user.UserID, guest.ID, guest.Name, text, "user", false)
+				now := time.Now()
+				guest.LastMessageAt = &now
+				guest.IsRead = false
+				cont.GuestRepo.Update(cont.Db, schema, *guest)
+			}
+			cont.handleAIMessage(tgClient, chatID, guest, text, schema, user.UserID, tenantID)
 		}
 
 		ctx.JSON(200, gin.H{"status": "ok"})
@@ -351,6 +390,20 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 	}
 
+	// Registration gate: if guest is not a registered customer, route all messages to n8n
+	if text != "" {
+		var isRegisteredCustomer bool
+		if guest.Username != "" {
+			c, _ := cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username)
+			isRegisteredCustomer = c != nil
+		}
+		if !isRegisteredCustomer {
+			cont.handleAIMessage(tgClient, chatID, guest, text, schema, user.UserID, tenantID)
+			ctx.JSON(200, gin.H{"status": "ok"})
+			return
+		}
+	}
+
 	// Handle menu navigation
 	log.Printf("[Telegram] DEBUG: guest.Phone='%s', state='%s', text='%s'", guest.Phone, state, text)
 	
@@ -381,25 +434,14 @@ func (cont *TelegramContImpl) Webhook(ctx *gin.Context) {
 			return
 		}
 		
-		// Show menu for other inputs
-		log.Printf("[Telegram] Showing menu to user")
-		menu := "✅ Registration complete!\n\n"
-		menu += "What would you like to do?\n\n"
-		menu += "Type 1 - See Products\n"
-		menu += "Type 2 - Create Order\n"
-		menu += "Type 3 - Check Order Status\n"
-		menu += "Type 4 - FAQ\n\n"
-		menu += "Just type 1, 2, 3, or 4"
-
-		cont.sendBotMessage(tgClient, user.UserID, guest.ID, guest.Name, chatID, schema, menu)
-
-		// Update state
+		// Route to AI — answer the question first, show menu naturally
 		if guest.ConversationState == nil {
 			guest.ConversationState = domains.JSONB{}
 		}
 		guest.ConversationState["state"] = "waiting_for_menu"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
+		cont.handleAIMessage(tgClient, chatID, guest, text, schema, user.UserID, tenantID)
 		ctx.JSON(200, gin.H{"status": "ok"})
 		return
 	}
@@ -511,7 +553,7 @@ func parseCheckOrderIntent(text string) (bool, int) {
 
 	// Must contain order-related noun
 	orderNouns := []string{
-		"order", "pesanan", "pemesanan", "belanjaan", "transaksi", "belanja",
+		"order", "transaction", "purchase", "shopping", "cart",
 	}
 	hasOrderWord := false
 	for _, w := range orderNouns {
@@ -526,18 +568,11 @@ func parseCheckOrderIntent(text string) (bool, int) {
 
 	// Must also have a qualifying word showing intent to check/view
 	qualifiers := []string{
-		// English
 		"check", "status", "my", "see", "view", "track", "history",
 		"update", "recent", "latest", "last", "where", "when",
 		"what happened", "what's the", "how's my", "how is my",
 		"arrived", "delivered", "received", "done", "completed",
-		// Indonesian
-		"cek", "lihat", "gimana", "gimana nih", "mana", "mana nih",
-		"sampai", "nyampe", "nyampai", "tiba",
-		"dimana", "di mana", "kemana", "sampai mana",
-		"progress", "udah", "udah sampai", "sudah", "sudah sampai",
-		"belum", "selesai", "selesai belum", "sampai belum",
-		"konfirmasi", "info", "#",
+		"progress", "confirm", "info", "#",
 	}
 	hasQualifier := false
 	for _, q := range qualifiers {
@@ -559,7 +594,7 @@ func parseCheckOrderIntent(text string) (bool, int) {
 	}
 
 	// "all" intent → show all orders
-	allKeywords := []string{"all", "semua", "seluruh", "every", "list all", "all order", "semua pesanan"}
+	allKeywords := []string{"all", "every", "list all", "all order", "all orders", "all my orders"}
 	for _, kw := range allKeywords {
 		if strings.Contains(lower, kw) {
 			return true, 0
@@ -577,13 +612,12 @@ func isCheckOrderIntent(text string) bool {
 }
 
 // isCreateOrderIntent detects create order intent from free-form text.
-// Strategy: must have order-action verb AND order-noun (or just strong single phrases).
+// Strategy: must have order-action verb AND order-noun, or match a strong single phrase.
 func isCreateOrderIntent(text string) bool {
 	lower := strings.ToLower(text)
 
-	// Strong single phrases — langsung true
+	// Strong single phrases — immediately return true
 	strongPhrases := []string{
-		// English
 		"place order", "make order", "create order",
 		"i want to order", "i wanna order", "i'd like to order",
 		"i want to buy", "i wanna buy", "i'd like to buy",
@@ -592,18 +626,10 @@ func isCreateOrderIntent(text string) bool {
 		"let me order", "let me buy", "let me get",
 		"want to purchase", "wanna purchase",
 		"gimme", "give me",
-		// Indonesian
-		"mau order", "mau pesan", "mau pesen", "mau beli",
-		"buat pesanan", "pesan sekarang", "order sekarang",
-		"pengen order", "pengen pesan", "pengen pesen", "pengen beli",
-		"ingin order", "ingin pesan", "ingin beli",
-		"aku mau order", "aku mau pesan", "aku mau beli",
-		"saya mau order", "saya mau pesan", "saya mau beli",
-		"order dong", "pesan dong", "pesen dong", "beli dong",
-		"order ya", "pesan ya", "pesen ya", "beli ya",
-		"bisa order", "bisa pesan", "bisa beli",
-		"boleh order", "boleh pesan", "boleh beli",
-		"mau pesen", "mau ambil",
+		"i want order", "want order", "i order",
+		"mau order", "mau pesan", "mau beli",
+		"order now", "pesan sekarang", "beli sekarang",
+		"i wanna get", "i want get",
 	}
 	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
@@ -613,10 +639,10 @@ func isCreateOrderIntent(text string) bool {
 
 	// Word-group: action verb + order noun
 	actionVerbs := []string{
-		"order", "pesan", "pesen", "beli", "purchase", "buy", "checkout",
+		"order", "purchase", "buy", "checkout",
 	}
 	orderNouns := []string{
-		"makanan", "minuman", "produk", "item", "barang", "food", "drink",
+		"product", "item", "food", "drink", "meal",
 	}
 	for _, verb := range actionVerbs {
 		for _, noun := range orderNouns {
@@ -630,13 +656,12 @@ func isCreateOrderIntent(text string) bool {
 }
 
 // isShowProductsIntent detects intent to view products/menu from free-form text.
-// Strategy: must have view-verb AND product-noun, or strong single phrases.
+// Strategy: must have view-verb AND product-noun, or match a strong single phrase.
 func isShowProductsIntent(text string) bool {
 	lower := strings.ToLower(text)
 
-	// Strong single phrases — langsung true
+	// Strong single phrases — immediately return true
 	strongPhrases := []string{
-		// English
 		"see product", "show product", "view product", "list product",
 		"see menu", "show menu", "view menu", "list menu",
 		"what do you have", "what do you sell", "what do you offer",
@@ -654,22 +679,7 @@ func isShowProductsIntent(text string) bool {
 		"got any food", "got any menu", "any food available",
 		"your product", "your menu", "your food list",
 		"tell me your menu", "tell me your product",
-		// Indonesian
-		"lihat produk", "lihat menu", "lihat makanan", "lihat minuman",
-		"liat produk", "liat menu", "liat makanan",
-		"apa saja produk", "apa aja produk", "apa produk",
-		"ada menu apa", "ada produk apa", "ada apa aja", "ada apa saja",
-		"ada makanan apa", "ada minuman apa", "jual apa", "jual apa aja", "jual apa saja",
-		"ada apa", "apa yang dijual", "apa yang ada",
-		"daftar produk", "daftar menu", "tampilkan produk", "tampilkan menu",
-		"kasih lihat produk", "kasih lihat menu",
-		"tunjukkan produk", "tunjukkan menu", "tunjukin produk", "tunjukin menu",
-		"tunjukin aja", "tunjukkan aja",
-		"info produk", "info menu", "informasi produk", "informasi menu",
-		"mau lihat produk", "mau lihat menu", "mau liat produk", "mau liat menu",
-		"boleh lihat produk", "boleh lihat menu", "boleh liat produk", "boleh liat menu",
-		"pengen lihat menu", "pengen liat menu", "pengen lihat produk",
-		"katalog produk", "katalog menu",
+		"product list", "menu list", "product catalogue", "product catalog",
 	}
 	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
@@ -680,14 +690,10 @@ func isShowProductsIntent(text string) bool {
 	// Word-group: view verb + product noun
 	viewVerbs := []string{
 		"see", "show", "view", "display", "browse", "check out",
-		"list", "find",
-		"lihat", "liat", "tampilkan", "tunjuk", "perlihat",
-		"kasih tau", "kasih tahu", "kasih liat", "kasih lihat",
-		"cek", "mau tau", "mau tahu", "pengen tau", "pengen tahu",
+		"list", "find", "search",
 	}
 	productNouns := []string{
-		"product", "produk", "menu", "makanan", "minuman", "item",
-		"barang", "food", "drink", "catalogue", "catalog",
+		"product", "menu", "item", "food", "drink", "catalogue", "catalog",
 	}
 	for _, verb := range viewVerbs {
 		for _, noun := range productNouns {
@@ -903,6 +909,19 @@ func (cont *TelegramContImpl) sendOrderStatusMessage(tgClient *helpers.TelegramC
 	}
 }
 
+// getTenantTimezone reads the configured timezone from the tenant's integration settings.
+func (cont *TelegramContImpl) getTenantTimezone(schema string) string {
+	var timezone string
+	cont.Db.Raw(fmt.Sprintf(
+		`SELECT value FROM %s.setting WHERE group_name = 'integration' AND sub_group_name = 'Telegram' AND name = 'timezone' LIMIT 1`,
+		schema,
+	)).Scan(&timezone)
+	if timezone == "" {
+		return "Asia/Singapore"
+	}
+	return timezone
+}
+
 // getAIPromptSetting reads one AI prompt setting from the tenant schema
 func (cont *TelegramContImpl) getAIPromptSetting(schema, subGroupName, settingName string) string {
 	settings, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "ai_prompt", subGroupName)
@@ -924,6 +943,17 @@ func (cont *TelegramContImpl) getAIPromptSetting(schema, subGroupName, settingNa
 func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, chatID string, guest *domains.Guest, message, schema string, clientID, tenantID uuid.UUID) {
 	log.Printf("[AI] Handling message for guest %s: %s", guest.ID, message)
 
+	// Bot disabled or manual mode — human operator handles replies
+	if !cont.isBotEnabled(schema) || cont.isManualMode(schema) {
+		var msgCount int64
+		cont.Db.Table(schema+".guest_message").Where("guest_id = ?", guest.ID).Count(&msgCount)
+		if msgCount <= 1 {
+			cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"👋 Thanks for reaching out! Our team has received your message and will get back to you shortly.")
+		}
+		return
+	}
+
 	// Check free token limit when no active subscription
 	if !hasActiveSubs(cont.Db, cont.TenantUsageRepo, tenantID) {
 		if freeTokensRemaining(cont.Db, cont.TenantUsageRepo, tenantID) <= 0 {
@@ -933,17 +963,53 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 		}
 	}
 
+	// Check bot active hours — outside these hours the bot does not auto-reply
+	if !cont.isBotActiveHours(schema) {
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema,
+			"🤖 Our AI assistant is currently offline. Please reach out again during our support hours. Thank you for your patience!")
+		return
+	}
+
+	// Require Telegram username — needed for customer registration
+	if guest.Username == "" {
+		cont.sendBotMessage(tgClient, clientID, guest.ID, guest.Name, chatID, schema,
+			"⚠️ To use this service, please set a Telegram username first.\n\nGo to Telegram → Settings → Edit Profile → Username, then message us again.")
+		return
+	}
+
 	guestID := guest.ID
 	guestName := guest.Name
 
 	go func() {
 		history, _ := cont.GuestMessageRepo.GetLatestMessages(cont.Db, schema, guestID, 10)
 
-		// Send to n8n — prompt is empty, n8n fetches context from /internal/{schema}/ai-context
-		n8nResp, err := cont.N8NServ.ProcessMessage(schema, guestID.String(), chatID, message, "", history)
+		// Check if this guest is already a registered customer
+		existingCustomer, _ := cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username)
+		isRegistered := existingCustomer != nil
+
+		// Query store name from business_profile (public schema)
+		var storeName string
+		cont.Db.Raw(`
+			SELECT COALESCE(NULLIF(TRIM(bp.business_name), ''), '')
+			FROM public.business_profile bp
+			JOIN public.tenant t ON t.tenant_id = bp.tenant_id
+			JOIN public.users u ON u.user_id = t.user_id
+			WHERE u.tenant_schema = ?
+			LIMIT 1`, schema).Scan(&storeName)
+
+		// Build conversation state map for n8n
+		convState := map[string]interface{}{}
+		if guest.ConversationState != nil {
+			for k, v := range guest.ConversationState {
+				convState[k] = v
+			}
+		}
+
+		// Send to n8n — n8n decides whether to run registration or normal AI flow
+		n8nResp, err := cont.N8NServ.ProcessMessage(schema, guestID.String(), chatID, message, "", history, isRegistered, clientID.String(), guest.Username, storeName, convState)
 		if err != nil {
 			log.Printf("[AI] n8n error: %v", err)
-			cont.sendBotMessage(tgClient, clientID, guestID, guestName, chatID, schema, "⚠️ Maaf, saya sedang mengalami kendala. Silakan coba lagi nanti.")
+			cont.sendBotMessage(tgClient, clientID, guestID, guestName, chatID, schema, "⚠️ Something went wrong. Please try again later.")
 			return
 		}
 
@@ -967,6 +1033,11 @@ func (cont *TelegramContImpl) handleAIMessage(tgClient *helpers.TelegramClient, 
 		// Check if AI signals create order intent
 		if strings.Contains(n8nResp.Reply, "__ACTION:CREATE_ORDER__") {
 			log.Printf("[AI] Create order intent detected for chat %s", chatID)
+			if !cont.isOperationalHoursOpen(schema) {
+				cont.sendBotMessage(tgClient, clientID, guestID, guestName, chatID, schema,
+					"⏰ Sorry, we are currently outside our operational hours. Orders can only be placed during business hours.")
+				return
+			}
 			freshGuest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 			if err == nil && freshGuest != nil {
 				cont.startCreateOrder(tgClient, chatID, schema, freshGuest, clientID)
@@ -1005,6 +1076,100 @@ func (cont *TelegramContImpl) setGuestState(schema string, guest *domains.Guest,
 	cont.GuestRepo.Update(cont.Db, schema, *guest)
 }
 
+// UpdateGuestConversationState merges the request body into guest.conversation_state.
+// Called by n8n at each registration step to persist collected data.
+func (cont *TelegramContImpl) UpdateGuestConversationState(ctx *gin.Context) {
+	schema := ctx.Param("schema")
+	guestIDStr := ctx.Param("guest_id")
+
+	guestID, err := uuid.Parse(guestIDStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "invalid guest_id"})
+		return
+	}
+
+	var updates map[string]interface{}
+	if err := ctx.ShouldBindJSON(&updates); err != nil {
+		ctx.JSON(400, gin.H{"error": "invalid body"})
+		return
+	}
+
+	guest, err := cont.GuestRepo.FindByID(cont.Db, schema, guestID)
+	if err != nil || guest == nil {
+		ctx.JSON(404, gin.H{"error": "guest not found"})
+		return
+	}
+
+	if guest.ConversationState == nil {
+		guest.ConversationState = domains.JSONB{}
+	}
+	for k, v := range updates {
+		guest.ConversationState[k] = v
+	}
+	cont.GuestRepo.Update(cont.Db, schema, *guest)
+
+	ctx.JSON(200, gin.H{"ok": true})
+}
+
+// CompleteGuestRegistration creates the customer record and clears registration state.
+// Called by n8n at the final registration step.
+func (cont *TelegramContImpl) CompleteGuestRegistration(ctx *gin.Context) {
+	schema := ctx.Param("schema")
+	guestIDStr := ctx.Param("guest_id")
+
+	guestID, err := uuid.Parse(guestIDStr)
+	if err != nil {
+		ctx.JSON(400, gin.H{"error": "invalid guest_id"})
+		return
+	}
+
+	var body struct {
+		Name       string `json:"name"`
+		Username   string `json:"username"`
+		Address    string `json:"address"`
+		PostalCode string `json:"postal_code"`
+	}
+	if err := ctx.ShouldBindJSON(&body); err != nil || body.Name == "" || body.Username == "" {
+		ctx.JSON(400, gin.H{"error": "name and username are required"})
+		return
+	}
+
+	toPtr := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		return &s
+	}
+
+	customer := domains.Customer{
+		Name:        body.Name,
+		Username:    toPtr(body.Username),
+		Address:     toPtr(body.Address),
+		PostalCode:  toPtr(body.PostalCode),
+		AccountType: "Telegram",
+	}
+	if _, err := cont.CustomerRepo.Create(cont.Db, schema, customer); err != nil {
+		log.Printf("[Registration] create customer error: %v", err)
+		ctx.JSON(500, gin.H{"error": "failed to create customer"})
+		return
+	}
+
+	// Clear registration state from guest
+	guest, err := cont.GuestRepo.FindByID(cont.Db, schema, guestID)
+	if err == nil && guest != nil {
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
+		}
+		delete(guest.ConversationState, "reg_step")
+		delete(guest.ConversationState, "reg_name")
+		delete(guest.ConversationState, "reg_address")
+		guest.ConversationState["state"] = "waiting_for_menu"
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+	}
+
+	ctx.JSON(200, gin.H{"ok": true})
+}
+
 // sendBotMessage sends a text reply to Telegram, saves it to guest_message, and broadcasts to SSE.
 // Use this instead of bare tgClient.SendMessage for all bot replies that should appear in the dashboard.
 func (cont *TelegramContImpl) sendBotMessage(tgClient *helpers.TelegramClient, clientID, guestID uuid.UUID, guestName, chatID, schema, message string) {
@@ -1022,17 +1187,59 @@ func (cont *TelegramContImpl) sendBotMessage(tgClient *helpers.TelegramClient, c
 	cont.broadcastMessage(clientID, guestID, guestName, message, "assistant", false)
 }
 
-// isOperationalHoursOpen returns true if the current Singapore time is within the configured operational hours.
+// getIntegrationSetting reads one value from integration/Telegram settings in the tenant schema.
+func (cont *TelegramContImpl) getIntegrationSetting(schema, name string) string {
+	settings, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "integration", "Telegram")
+	if err != nil {
+		return ""
+	}
+	for _, s := range settings {
+		if s.Name == name {
+			return s.Value
+		}
+	}
+	return ""
+}
+
+// isStoreOpen returns true if the current time is within store operational hours.
+// Reads store-operational-hours (JSON) from ai_prompt/Store Operational.
+func (cont *TelegramContImpl) isStoreOpen(schema string) bool {
+	hoursJSON := cont.getAIPromptSetting(schema, "Store Operational", "store-operational-hours")
+	open, _ := helpers.IsWithinOperationalHours(hoursJSON, cont.getTenantTimezone(schema))
+	return open
+}
+
+// isOperationalHoursOpen is an alias for isStoreOpen kept for call-site compatibility.
 func (cont *TelegramContImpl) isOperationalHoursOpen(schema string) bool {
+	return cont.isStoreOpen(schema)
+}
+
+// isBotActiveHours returns true if the AI bot should auto-respond right now.
+// Reads ai-operational-prompt (AI Operational); falls back to store-operational-hours.
+func (cont *TelegramContImpl) isBotActiveHours(schema string) bool {
 	hoursJSON := cont.getAIPromptSetting(schema, "AI Operational", "ai-operational-prompt")
 	if hoursJSON == "" {
-		return true // no setting = always open
+		return cont.isStoreOpen(schema)
 	}
-	open, err := helpers.IsWithinOperationalHours(hoursJSON, "Asia/Singapore")
-	if err != nil {
-		return true // parse error = treat as open
-	}
+	open, _ := helpers.IsWithinOperationalHours(hoursJSON, cont.getTenantTimezone(schema))
 	return open
+}
+
+// isManualMode returns true when the tenant has switched to manual operator mode.
+// In manual mode the AI must not auto-reply so the human operator can take over.
+func (cont *TelegramContImpl) isManualMode(schema string) bool {
+	val := cont.getIntegrationSetting(schema, "manual-mode")
+	return strings.EqualFold(strings.TrimSpace(val), "true")
+}
+
+// isBotEnabled returns false when the tenant has explicitly disabled the bot.
+// Empty / missing setting defaults to enabled.
+func (cont *TelegramContImpl) isBotEnabled(schema string) bool {
+	val := cont.getIntegrationSetting(schema, "bot-enabled")
+	if val == "" {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(val), "true")
 }
 
 // broadcastMessage pushes a new message event to SSE clients (detail view + conversations list).
@@ -1073,21 +1280,30 @@ func (cont *TelegramContImpl) GetAIContextForSchema(ctx *gin.Context) {
 		return
 	}
 
-	// --- AI Prompts (5 sections from tenant setting) ---
+	// --- AI Prompts (all sections from tenant setting) ---
+	storeHoursJSON := cont.getAIPromptSetting(schema, "Store Operational", "store-operational-hours")
+	storeOpen, _ := helpers.IsWithinOperationalHours(storeHoursJSON, cont.getTenantTimezone(schema))
 	prompts := map[string]string{
 		"product":     cont.getAIPromptSetting(schema, "AI Product", "ai-product-prompt"),
 		"delivery":    cont.getAIPromptSetting(schema, "AI Delivery", "ai-delivery-prompt"),
-		"operational": cont.getAIPromptSetting(schema, "AI Operational", "ai-operational-prompt"),
+		"operational": helpers.FormatOperationalHoursForAI(cont.getAIPromptSetting(schema, "AI Operational", "ai-operational-prompt")),
 		"about_store": cont.getAIPromptSetting(schema, "AI About Store", "ai-about-store-prompt"),
 		"faq":         cont.getAIPromptSetting(schema, "AI FAQ", "ai-faq-prompt"),
+		"store_hours": helpers.FormatOperationalHoursForAI(storeHoursJSON),
 	}
 
 	// --- Products ---
+	aiContextAppURL := os.Getenv("APP_URL")
+	if aiContextAppURL == "" {
+		aiContextAppURL = "https://data.ai-dia.com"
+	}
+
 	type ProductItem struct {
 		Name        string  `json:"name"`
 		Price       float64 `json:"price"`
 		Description string  `json:"description"`
 		OutOfStock  bool    `json:"out_of_stock"`
+		ImageURL    string  `json:"image_url,omitempty"`
 	}
 	var products []ProductItem
 	dbProducts, total, err := cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 100})
@@ -1097,11 +1313,16 @@ func (cont *TelegramContImpl) GetAIContextForSchema(ctx *gin.Context) {
 			if p.Description != nil {
 				desc = *p.Description
 			}
+			imageURL := ""
+			if len(p.Images) > 0 && p.Images[0].Image != "" {
+				imageURL = aiContextAppURL + p.Images[0].Image
+			}
 			products = append(products, ProductItem{
 				Name:        p.Name,
 				Price:       p.Price,
 				Description: desc,
 				OutOfStock:  p.IsOutOfStock,
+				ImageURL:    imageURL,
 			})
 		}
 	}
@@ -1125,10 +1346,22 @@ func (cont *TelegramContImpl) GetAIContextForSchema(ctx *gin.Context) {
 		}
 	}
 
+	// --- Store Name ---
+	var storeName string
+	cont.Db.Raw(`
+		SELECT COALESCE(NULLIF(TRIM(bp.business_name), ''), '')
+		FROM public.business_profile bp
+		JOIN public.tenant t ON t.tenant_id = bp.tenant_id
+		JOIN public.users u ON u.user_id = t.user_id
+		WHERE u.tenant_schema = ?
+		LIMIT 1`, schema).Scan(&storeName)
+
 	ctx.JSON(200, gin.H{
-		"schema":        schema,
-		"prompts":       prompts,
-		"products":      products,
+		"schema":         schema,
+		"store_name":     storeName,
+		"store_open":     storeOpen,
+		"prompts":        prompts,
+		"products":       products,
 		"delivery_zones": deliveryZones,
 	})
 }

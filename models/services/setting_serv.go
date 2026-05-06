@@ -18,7 +18,9 @@ type SettingServ interface {
 	GetDb() *gorm.DB
 	GetUserRepo() repositories.UsersRepo
 	GetByGroupAndSubGroupName(db *gorm.DB, schema, group, subGroup string) ([]interface{}, error)
-	UpdateBySubGroupNameForSchema(db *gorm.DB, schema, subGroupName, name, value string) error
+	UpdateBySubGroupNameForSchema(db *gorm.DB, schema, groupName, subGroupName, name, value string) error
 	GetAIPrompts(schema string) (map[string]string, error)
 	UpdateAIPromptSection(accessToken, schema, section, prompt string) error
+	GetClientKDS(accessToken string, clientID uuid.UUID) (bool, error)
+	SetClientKDS(accessToken string, clientID uuid.UUID, enabled bool) error
 }

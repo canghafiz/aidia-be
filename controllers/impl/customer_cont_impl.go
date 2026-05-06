@@ -22,7 +22,7 @@ func NewCustomerContImpl(customerServ services.CustomerServ) *CustomerContImpl {
 }
 
 // Create @Summary      Create Customer
-// @Description  Buat customer baru secara generic. Saat ini mendukung flow WhatsApp dari form CRM dengan `account_type = Whatsapp`.
+// @Description  Create a new customer generically. Currently supports the WhatsApp flow from the CRM form with `account_type = Whatsapp`.
 // @Tags         Customer
 // @Accept       json
 // @Produce      json
@@ -55,6 +55,8 @@ func (cont *CustomerContImpl) Create(ctx *gin.Context) {
 			Name:             request.Name,
 			PhoneCountryCode: request.PhoneCountryCode,
 			PhoneNumber:      request.PhoneNumber,
+			Address:          request.Address,
+			PostalCode:       request.PostalCode,
 		})
 		if err != nil {
 			exceptions.ErrorHandler(ctx, err)
@@ -67,8 +69,10 @@ func (cont *CustomerContImpl) Create(ctx *gin.Context) {
 		return
 	case "telegram":
 		result, err := cont.CustomerServ.CreateTelegram(jwt, clientID, req.CreateTelegramCustomerRequest{
-			Name:     request.Name,
-			Username: request.Username,
+			Name:       request.Name,
+			Username:   request.Username,
+			Address:    request.Address,
+			PostalCode: request.PostalCode,
 		})
 		if err != nil {
 			exceptions.ErrorHandler(ctx, err)
@@ -119,7 +123,7 @@ func (cont *CustomerContImpl) Update(ctx *gin.Context) {
 }
 
 // CreateTelegram @Summary      Create Telegram Customer
-// @Description  Buat customer baru via Telegram. Memvalidasi username ke Telegram API. Jika sudah terdaftar, kembalikan data yang ada.
+// @Description  Create a new customer via Telegram. Validates the username against the Telegram API. If already registered, returns existing data.
 // @Tags         Customer
 // @Accept       json
 // @Produce      json
@@ -159,7 +163,7 @@ func (cont *CustomerContImpl) CreateTelegram(ctx *gin.Context) {
 }
 
 // CreateWhatsApp @Summary      Create WhatsApp Customer
-// @Description  Buat customer baru via WhatsApp. Memvalidasi nomor ke WhatsApp API. Jika sudah terdaftar, kembalikan data yang ada.
+// @Description  Create a new customer via WhatsApp. Validates the number against the WhatsApp API. If already registered, returns existing data.
 // @Tags         Customer
 // @Accept       json
 // @Produce      json
@@ -199,7 +203,7 @@ func (cont *CustomerContImpl) CreateWhatsApp(ctx *gin.Context) {
 }
 
 // GetAll @Summary      Get All Customers
-// @Description  Ambil semua customer dengan pagination
+// @Description  Get all customers with pagination
 // @Tags         Customer
 // @Produce      json
 // @Security     BearerAuth
@@ -235,7 +239,7 @@ func (cont *CustomerContImpl) GetAll(ctx *gin.Context) {
 }
 
 // GetByID @Summary      Get Customer By ID
-// @Description  Ambil detail customer berdasarkan ID
+// @Description  Get customer details by ID
 // @Tags         Customer
 // @Produce      json
 // @Security     BearerAuth

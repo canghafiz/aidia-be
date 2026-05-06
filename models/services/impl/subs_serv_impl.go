@@ -138,18 +138,18 @@ func (serv *SubsServImpl) GetCurrentSubs(accessToken string) (*subsRes.Response,
 		return nil, fmt.Errorf("tenant not found")
 	}
 
-	// Ambil semua usage dari plan yang masih aktif
+	// Fetch all usage rows for still-active plans
 	activeUsages, err := serv.TenantUsageRepo.GetActiveUsageByTenantID(serv.Db, tenant.TenantID)
 	if err != nil {
 		log.Printf("[SubsServ] GetActiveUsageByTenantID error: %v", err)
 		return nil, fmt.Errorf("failed to get active subscriptions")
 	}
 
-	// Ambil free usage (tenant_plan_id = NULL)
+	// Fetch free usage row (tenant_plan_id = NULL)
 	freeUsage, err := serv.TenantUsageRepo.GetFreeUsageByTenantID(serv.Db, tenant.TenantID)
 	if err != nil {
 		log.Printf("[SubsServ] GetFreeUsageByTenantID error: %v", err)
-		// Tidak return error — free usage mungkin belum ada
+		// Do not return error — free usage row may not exist yet
 		freeUsage = nil
 	}
 

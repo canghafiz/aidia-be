@@ -12,4 +12,6 @@ type SettingCont interface {
 	GetClientAIPrompts(context *gin.Context)
 	GetClientAIPromptSection(context *gin.Context)
 	UpdateClientAIPromptSection(context *gin.Context)
+	GetClientKDS(context *gin.Context)
+	SetClientKDS(context *gin.Context)
 }

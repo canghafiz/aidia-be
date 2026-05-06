@@ -36,7 +36,7 @@ func (cont *SettingContImpl) GetClientIntegration(context *gin.Context) {
 	}
 
 	// Get all settings from integration group - query each subgroup
-	subgroups := []string{"Telegram", "Stripe Client", "HitPay Client"}
+	subgroups := []string{"Telegram", "WhatsApp", "Stripe Client"}
 	responseData := []map[string]interface{}{}
 
 	for _, subGroupName := range subgroups {
@@ -130,7 +130,7 @@ func (cont *SettingContImpl) UpdateClientIntegration(context *gin.Context) {
 	}
 
 	for _, s := range request.Settings {
-		err := cont.SettingServ.UpdateBySubGroupNameForSchema(tx, schema, subGroupName, s.Name, s.Value)
+		err := cont.SettingServ.UpdateBySubGroupNameForSchema(tx, schema, "integration", subGroupName, s.Name, s.Value)
 		if err != nil {
 			tx.Rollback()
 			exceptions.ErrorHandler(context, fmt.Errorf("failed to update setting %s: %w", s.Name, err))

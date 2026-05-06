@@ -11,6 +11,8 @@ type Response struct {
 	Username         *string   `json:"username,omitempty"`
 	PhoneCountryCode *string   `json:"phone_country_code,omitempty"`
 	PhoneNumber      *string   `json:"phone_number,omitempty"`
+	Address          *string   `json:"address,omitempty"`
+	PostalCode       *string   `json:"postal_code,omitempty"`
 	GuestID          *string   `json:"guest_id,omitempty"`
 	AccountType      string    `json:"account_type"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -24,6 +26,8 @@ func ToResponse(c domains.Customer) Response {
 		Username:         c.Username,
 		PhoneCountryCode: c.PhoneCountryCode,
 		PhoneNumber:      c.PhoneNumber,
+		Address:          c.Address,
+		PostalCode:       c.PostalCode,
 		AccountType:      c.AccountType,
 		CreatedAt:        c.CreatedAt,
 		UpdatedAt:        c.UpdatedAt,

@@ -124,16 +124,27 @@ func (serv *CustomerServImpl) ensureWhatsAppGuest(schema string, tenantID uuid.U
 		return nil, fmt.Errorf("invalid whatsapp identity")
 	}
 
+	phoneFormatted := "+" + chatID
+
 	existing, err := serv.GuestRepo.FindByPlatformChatID(serv.Db, schema, chatID)
+	if err != nil {
+		// Fallback: find by phone in case guest exists from another platform
+		existing, err = serv.GuestRepo.FindByPhone(serv.Db, schema, phoneFormatted)
+	}
 	if err == nil && existing != nil {
 		updated := false
 		if strings.TrimSpace(existing.Name) == "" && request.Name != "" {
 			existing.Name = request.Name
 			updated = true
 		}
-		phoneFormatted := "+" + chatID
 		if strings.TrimSpace(existing.Phone) == "" {
 			existing.Phone = phoneFormatted
+			updated = true
+		}
+		if existing.PlatformChatID != chatID {
+			existing.PlatformChatID = chatID
+			existing.Platform = "whatsapp"
+			existing.Identity = chatID
 			updated = true
 		}
 		if updated {
@@ -144,7 +155,6 @@ func (serv *CustomerServImpl) ensureWhatsAppGuest(schema string, tenantID uuid.U
 		return existing, nil
 	}
 
-	phoneFormatted := "+" + chatID
 	guest := domains.Guest{
 		TenantID:         &tenantID,
 		Identity:         chatID,
@@ -397,8 +407,10 @@ func (serv *CustomerServImpl) CreateTelegram(accessToken string, clientID uuid.U
 	}
 
 	domain := req.CreateTelegramCustomerToDomain(req.CreateTelegramCustomerRequest{
-		Name:     request.Name,
-		Username: username,
+		Name:       request.Name,
+		Username:   username,
+		Address:    request.Address,
+		PostalCode: request.PostalCode,
 	})
 	customer, err := serv.CustomerRepo.Create(serv.Db, schema, domain)
 	if err != nil {
@@ -446,23 +458,29 @@ func (serv *CustomerServImpl) CreateWhatsApp(accessToken string, clientID uuid.U
 	// Get WhatsApp credentials from connection table
 	waConn, err := serv.WhatsAppConnectionRepo.FindByUserID(serv.Db, clientID)
 	if err != nil || waConn == nil {
-		return nil, fmt.Errorf("whatsapp integration not configured for this account")
-	}
-
-	// Validate WhatsApp phone number exists
-	waClient := helpers.NewWhatsAppClient(waConn.PhoneNumberID, waConn.AccessToken)
-	exists, err := waClient.CheckPhoneExists(request.PhoneCountryCode, request.PhoneNumber)
-	if err != nil {
-		if helpers.IsWhatsAppValidationUnsupported(err) {
-			log.Printf("[CustomerServ].CreateWhatsApp skip remote validation: %v", err)
-			exists = true
-		} else {
-		log.Printf("[CustomerServ].CreateWhatsApp check phone error: %v", err)
-		return nil, fmt.Errorf("failed to validate whatsapp number")
+		// Meta Cloud API not configured — check if whatsmeow is connected as fallback
+		var wmCount int64
+		serv.Db.Table("public.whatsmeow_device_schema").
+			Where("schema_name = ?", schema).
+			Count(&wmCount)
+		if wmCount == 0 {
+			return nil, fmt.Errorf("whatsapp integration not configured for this account")
 		}
-	}
-	if !exists {
-		return nil, fmt.Errorf("whatsapp number +%s%s is not registered on WhatsApp", request.PhoneCountryCode, request.PhoneNumber)
+		// whatsmeow connected — skip Meta API phone validation, proceed to create customer
+	} else {
+		// Validate WhatsApp phone number exists via Meta Cloud API
+		waClient := helpers.NewWhatsAppClient(waConn.PhoneNumberID, waConn.AccessToken)
+		exists, err := waClient.CheckPhoneExists(request.PhoneCountryCode, request.PhoneNumber)
+		if err != nil {
+			if helpers.IsWhatsAppValidationUnsupported(err) {
+				log.Printf("[CustomerServ].CreateWhatsApp skip remote validation: %v", err)
+			} else {
+				log.Printf("[CustomerServ].CreateWhatsApp check phone error: %v", err)
+				return nil, fmt.Errorf("failed to validate whatsapp number")
+			}
+		} else if !exists {
+			return nil, fmt.Errorf("whatsapp number +%s%s is not registered on WhatsApp", request.PhoneCountryCode, request.PhoneNumber)
+		}
 	}
 
 	// Return existing customer if already registered
@@ -533,6 +551,16 @@ func (serv *CustomerServImpl) Update(accessToken string, clientID uuid.UUID, cus
 	}
 
 	customer.Name = strings.TrimSpace(request.Name)
+	if v := strings.TrimSpace(request.Address); v != "" {
+		customer.Address = &v
+	} else {
+		customer.Address = nil
+	}
+	if v := strings.TrimSpace(request.PostalCode); v != "" {
+		customer.PostalCode = &v
+	} else {
+		customer.PostalCode = nil
+	}
 	switch accountType {
 	case "Telegram":
 		username := normalizeTelegramUsername(request.Username)
@@ -602,19 +630,24 @@ func (serv *CustomerServImpl) Update(accessToken string, clientID uuid.UUID, cus
 		}
 		waConn, err := serv.WhatsAppConnectionRepo.FindByUserID(serv.Db, clientID)
 		if err != nil || waConn == nil {
-			return nil, fmt.Errorf("whatsapp integration not configured for this account")
-		}
-		waClient := helpers.NewWhatsAppClient(waConn.PhoneNumberID, waConn.AccessToken)
-		exists, err := waClient.CheckPhoneExists(waReq.PhoneCountryCode, waReq.PhoneNumber)
-		if err != nil {
-			if helpers.IsWhatsAppValidationUnsupported(err) {
-				exists = true
-			} else {
-				return nil, fmt.Errorf("failed to validate whatsapp number")
+			// Meta API not configured — allow if whatsmeow is connected
+			var wmCount int64
+			serv.Db.Table("public.whatsmeow_device_schema").
+				Where("schema_name = ?", schema).
+				Count(&wmCount)
+			if wmCount == 0 {
+				return nil, fmt.Errorf("whatsapp integration not configured for this account")
 			}
-		}
-		if !exists {
-			return nil, fmt.Errorf("whatsapp number +%s%s is not registered on WhatsApp", waReq.PhoneCountryCode, waReq.PhoneNumber)
+		} else {
+			waClient := helpers.NewWhatsAppClient(waConn.PhoneNumberID, waConn.AccessToken)
+			exists, err := waClient.CheckPhoneExists(waReq.PhoneCountryCode, waReq.PhoneNumber)
+			if err != nil {
+				if !helpers.IsWhatsAppValidationUnsupported(err) {
+					return nil, fmt.Errorf("failed to validate whatsapp number")
+				}
+			} else if !exists {
+				return nil, fmt.Errorf("whatsapp number +%s%s is not registered on WhatsApp", waReq.PhoneCountryCode, waReq.PhoneNumber)
+			}
 		}
 		customer.AccountType = "Whatsapp"
 		customer.Username = nil

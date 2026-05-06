@@ -14,8 +14,9 @@ type Product struct {
 	OriginalPrice float64   `gorm:"column:original_price;not null;default:0"`
 	Description   *string   `gorm:"column:description"`
 	DeliveryID    uuid.UUID `gorm:"column:delivery_id;not null"`
-	IsOutOfStock  bool      `gorm:"column:is_out_of_stock;not null;default:false"`
-	IsActive      bool      `gorm:"column:is_active;not null;default:true"`
+	IsOutOfStock    bool      `gorm:"column:is_out_of_stock;not null;default:false"`
+	ProductQuantity int       `gorm:"column:product_quantity;not null;default:0"`
+	IsActive        bool      `gorm:"column:is_active;not null;default:true"`
 	CreatedAt     time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt     time.Time `gorm:"column:updated_at;autoUpdateTime"`
 

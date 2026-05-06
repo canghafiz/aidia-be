@@ -24,4 +24,16 @@ type ProductRepo interface {
 
 	// GetCategoriesByProductID Get categories by product ID
 	GetCategoriesByProductID(db *gorm.DB, schema string, productID uuid.UUID) ([]domains.ProductCategory, error)
+
+	// Tag DTO
+	CreateTagDtos(db *gorm.DB, schema string, dtos []domains.ProductTagDto) error
+	DeleteTagDtosByProductID(db *gorm.DB, schema string, productID uuid.UUID) error
+	GetTagsByProductID(db *gorm.DB, schema string, productID uuid.UUID) ([]domains.ProductTag, error)
+
+	// GetAllByTagIDs returns products that have at least one of the given tag IDs
+	GetAllByTagIDs(db *gorm.DB, schema string, tagIDs []uuid.UUID, pagination domains.Pagination) ([]domains.Product, int, error)
+
+	// DecrementQuantity atomically reduces product_quantity by qty.
+	// Only executes when current stock >= qty. Auto-marks is_out_of_stock when it hits 0.
+	DecrementQuantity(db *gorm.DB, schema string, productID uuid.UUID, qty int) error
 }
