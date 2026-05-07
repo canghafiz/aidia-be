@@ -630,6 +630,12 @@ func isCreateOrderIntent(text string) bool {
 		"mau order", "mau pesan", "mau beli",
 		"order now", "pesan sekarang", "beli sekarang",
 		"i wanna get", "i want get",
+		"tertarik pesan", "tertarik beli", "tertarik order",
+		"ingin pesan", "ingin beli", "ingin order", "ingin membeli", "ingin memesan",
+		"mau lanjut", "lanjut pesan", "lanjut order",
+		"saya pesan", "saya beli", "saya mau",
+		"iya pesan", "iya beli", "iya order",
+		"ya pesan", "ya beli",
 	}
 	for _, kw := range strongPhrases {
 		if strings.Contains(lower, kw) {
@@ -639,10 +645,10 @@ func isCreateOrderIntent(text string) bool {
 
 	// Word-group: action verb + order noun
 	actionVerbs := []string{
-		"order", "purchase", "buy", "checkout",
+		"order", "purchase", "buy", "checkout", "pesan", "beli",
 	}
 	orderNouns := []string{
-		"product", "item", "food", "drink", "meal",
+		"product", "item", "food", "drink", "meal", "produk", "barang", "makanan", "minuman",
 	}
 	for _, verb := range actionVerbs {
 		for _, noun := range orderNouns {

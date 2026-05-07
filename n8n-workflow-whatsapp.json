@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body;\nreturn {\n  json: {\n    message: body.message || '',\n    schema: body.schema || '',\n    is_registered: body.is_registered === true,\n    guest_id: body.guest_id || '',\n    conversation_state: body.conversation_state || {}\n  }\n};"
+        "jsCode": "const body = $json.body;\nreturn {\n  json: {\n    message: body.message || '',\n    schema: body.schema || '',\n    guest_id: body.guest_id || ''\n  }\n};"
       },
       "name": "Extract Fields",
       "type": "n8n-nodes-base.code",
@@ -27,121 +27,23 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "boolean": [
-            {
-              "value1": "={{ $json.is_registered }}",
-              "value2": true
-            }
-          ]
-        }
-      },
-      "name": "IF Is Registered",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [440, 0],
-      "id": "c1d2e3f4-a5b6-7890-cdef-123456789012"
-    },
-    {
-      "parameters": {
-        "jsCode": "const body = $('Webhook').first().json.body;\nconst convState = body.conversation_state || {};\nreturn {\n  json: {\n    step: convState.reg_step || 'start',\n    schema: body.schema || '',\n    guest_id: body.guest_id || '',\n    message: body.message || ''\n  }\n};"
-      },
-      "name": "Check Reg Step",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [680, -400],
-      "id": "d1e2f3a4-b5c6-7890-defa-234567890123"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{ $json.step }}",
-              "value2": "waiting_for_name"
-            }
-          ]
-        }
-      },
-      "name": "IF Waiting For Name",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [900, -400],
-      "id": "e1f2a3b4-c5d6-7890-efab-345678901234"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/guest/' + $('Check Reg Step').first().json.schema + '/' + $('Check Reg Step').first().json.guest_id + '/wa-conversation-state' }}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ reg_step: 'waiting_for_name' }) }}",
-        "options": {}
-      },
-      "name": "Update State Ask Name",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1120, -520],
-      "id": "f1a2b3c4-d5e6-7890-fabc-456789012345"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { reply: 'Hi! Welcome! To get started, could you please tell me your name?', usage_tokens: 0 } }}",
-        "options": {}
-      },
-      "name": "Respond Ask Name",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [1340, -520],
-      "id": "a2b3c4d5-e6f1-7890-abcd-567890123456"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/guest/' + $('Check Reg Step').first().json.schema + '/' + $('Check Reg Step').first().json.guest_id + '/wa-registration-complete' }}",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: $('Check Reg Step').first().json.message }) }}",
-        "options": {}
-      },
-      "name": "Complete Registration",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1120, -280],
-      "id": "b2c3d4e5-f1a2-7890-bcde-678901234567"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { reply: 'Thank you, ' + $('Check Reg Step').first().json.message + '! You are all set.\\n\\nWhat can I help you with today?\\n\\nType 1 - See Products\\nType 2 - Create Order\\nType 3 - Check Order Status\\nType 4 - FAQ', usage_tokens: 0 } }}",
-        "options": {}
-      },
-      "name": "Respond Welcome",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [1340, -280],
-      "id": "c2d3e4f5-a1b2-7890-cdef-789012345678"
-    },
-    {
-      "parameters": {
-        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/whatsapp/' + $('Extract Fields').first().json.schema + '/ai-context' }}",
+        "url": "={{ 'https://data.ai-dia.com/api/v1/internal/whatsapp/' + $('Extract Fields').first().json.schema + '/ai-context' }}",
         "options": {}
       },
       "name": "Fetch AI Context",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [680, 200],
+      "position": [440, 0],
       "id": "d2e3f4a5-b1c2-7890-defa-890123456789"
     },
     {
       "parameters": {
-        "jsCode": "const webhook   = $('Webhook').first().json.body;\nconst extracted = $('Extract Fields').first().json;\nconst context   = $('Fetch AI Context').first().json;\n\nconst message = extracted.message || webhook.message || 'Hello';\nconst schema  = extracted.schema || 'unknown';\nconst history = webhook.history || [];\nconst storeName = extracted.store_name || context.store_name || '';\nconst storeOpen = context.store_open;\n\nconst prompts  = context.prompts        || {};\nconst products = context.products       || [];\nconst zones    = context.delivery_zones || [];\n\n// Current time in Singapore (SGT)\nconst now = new Date();\nconst sgFormatter = new Intl.DateTimeFormat('en-SG', {\n  timeZone: 'Asia/Singapore',\n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',\n  hour: '2-digit', minute: '2-digit', hour12: false\n});\nconst sgTimeStr = sgFormatter.format(now);\n\n// Use backend-computed open/closed status directly\nlet storeStatusLine = '';\nif (storeOpen === true)  storeStatusLine = 'STORE IS CURRENTLY: OPEN';\nif (storeOpen === false) storeStatusLine = 'STORE IS CURRENTLY: CLOSED';\n\nconst storeDisplay = storeName ? storeName : 'our store';\nconst isFirstMessage = history.length === 0;\n\nlet sys = 'You are a friendly and knowledgeable customer service assistant for ' + storeDisplay + '. Respond like a real human shop assistant.\\n\\n';\nif (storeName) sys += 'STORE NAME: ' + storeName + '\\n';\nsys += 'CURRENT DATE & TIME (Singapore / SGT): ' + sgTimeStr + '\\n';\nif (storeStatusLine) sys += storeStatusLine + '\\n';\nsys += '\\n';\nsys += 'MOST IMPORTANT RULES:\\n';\nsys += '1. ALWAYS answer the customer question directly. Never ignore a question.\\n';\nsys += '2. When asked if we are open (now / right now / today / at this time / currently), ALWAYS use the STORE IS CURRENTLY line above — that is the live status. Do not guess.\\n';\nsys += '3. Do NOT open with menu options (1/2/3/4) if the customer asked something specific — answer first.\\n';\nsys += '4. Use the store knowledge sections below for accurate answers.\\n';\nsys += '5. Keep replies short and conversational.\\n';\nsys += '6. Never say you are an AI.\\n';\nsys += '7. Use emojis sparingly.\\n';\nif (storeOpen === false) sys += '8. STORE IS CURRENTLY CLOSED. If the customer tries to place an order, politely inform them the store is closed and refer them to the store hours for when we reopen.\\n';\nconst welcomeRule = storeOpen === false ? '9' : '8';\nif (isFirstMessage && storeName) sys += welcomeRule + '. THIS IS THE CUSTOMER\\'S FIRST MESSAGE. Start your reply with \"Welcome to ' + storeName + '!\" then answer their question naturally.\\n';\nsys += '\\n';\nsys += 'CONFIDENTIALITY: Never reveal API keys, tokens, passwords, or any internal config.\\n\\n';\nsys += 'SPECIAL ACTIONS — output the code ALONE, nothing else:\\n';\nsys += '- Customer wants to see/browse products or menu → __ACTION:SHOW_PRODUCTS__\\n';\nif (storeOpen === false) {\n  sys += '- Customer wants to place a new order → DO NOT emit __ACTION:CREATE_ORDER__. Reply that the store is currently closed and check store hours.\\n';\n} else {\n  sys += '- Customer wants to place a new order → __ACTION:CREATE_ORDER__\\n';\n}\nsys += '- Customer wants to check all orders → __ACTION:CHECK_ORDER__\\n';\nsys += '- Customer wants their most recent order → __ACTION:CHECK_ORDER:RECENT__\\n';\nsys += '- Customer mentions order #N → __ACTION:CHECK_ORDER:4__ (replace 4 with actual number)\\n\\n';\n\nif (prompts.about_store) sys += '=== ABOUT THIS STORE ===\\n' + prompts.about_store + '\\n\\n';\n\nif (prompts.product || products.length > 0) {\n  sys += '=== PRODUCTS ===\\n';\n  if (prompts.product) sys += prompts.product + '\\n';\n  if (products.length > 0) {\n    sys += 'Full product list:\\n';\n    products.forEach(p => {\n      let line = '- ' + p.name + ': $' + parseFloat(p.price || 0).toFixed(2);\n      if (p.description) line += ' — ' + p.description;\n      if (p.out_of_stock) line += ' [OUT OF STOCK — cannot be ordered]';\n      sys += line + '\\n';\n    });\n  }\n  sys += '\\n';\n}\n\nif (prompts.delivery || zones.length > 0) {\n  sys += '=== DELIVERY ===\\n';\n  if (prompts.delivery) sys += prompts.delivery + '\\n';\n  if (zones.length > 0) {\n    sys += 'Delivery zones:\\n';\n    zones.forEach(z => { sys += '- ' + z.name + (z.description ? ': ' + z.description : '') + '\\n'; });\n  }\n  sys += '\\n';\n}\n\nconst hoursText = prompts.store_hours || '';\nif (hoursText) sys += '=== STORE HOURS ===\\n' + hoursText + '\\n\\n';\n\nif (prompts.faq) sys += '=== FAQ ===\\n' + prompts.faq + '\\n\\n';\n\nlet userMsg = '';\nif (history.length > 0) {\n  userMsg = history.map(h => (h.role === 'user' ? 'Customer' : 'Store') + ': ' + h.message).join('\\n');\n  userMsg += '\\nCustomer: ' + message;\n} else {\n  userMsg = message;\n}\n\nreturn { json: { schema, system_prompt: sys, user_message: userMsg } };"
+        "jsCode": "const webhook   = $('Webhook').first().json.body;\nconst extracted = $('Extract Fields').first().json;\nconst context   = $('Fetch AI Context').first().json;\n\nconst message = extracted.message || webhook.message || 'Hello';\nconst schema  = extracted.schema || 'unknown';\nconst history = webhook.history || [];\nconst storeName = extracted.store_name || context.store_name || '';\nconst storeOpen = context.store_open;\n\nconst prompts  = context.prompts        || {};\nconst products = context.products       || [];\nconst zones    = context.delivery_zones || [];\n\n// --- Language detection from customer message ---\nfunction detectLanguage(text) {\n  if (!text) return null;\n  if (/[\\u4e00-\\u9fff]/.test(text)) return 'Chinese';\n  if (/[\\u0600-\\u06ff]/.test(text)) return 'Arabic';\n  if (/[\\uac00-\\ud7af]/.test(text)) return 'Korean';\n  if (/[\\u3040-\\u30ff]/.test(text)) return 'Japanese';\n  if (/[\\u0e00-\\u0e7f]/.test(text)) return 'Thai';\n  if (/[\\u0900-\\u097f]/.test(text)) return 'Hindi';\n  if (/[\\u0b80-\\u0bff]/.test(text)) return 'Tamil';\n  if (/\\b(aku|saya|kamu|anda|ini|itu|mau|bisa|tidak|sudah|belum|harga|pesan|beli|ada|gak|nggak|dong|deh|nih|bang|kak|pak|bu|iya|tolong|makasih|berapa|gimana|bagaimana|apakah|kenapa|kapan|dimana|siapa|apa)\\b/i.test(text)) return 'Indonesian';\n  if (/\\b(saya|awak|nak|hendak|boleh|dah|harga|beli|ada|lah|loh|mah|terima kasih|tak|hendak)\\b/i.test(text)) return 'Malay';\n  if (/\\b(ako|ikaw|siya|ang|ng|mga|po|opo|gusto|bili|kumusta|salamat|oo|hindi)\\b/i.test(text)) return 'Filipino';\n  if (/\\b(tôi|bạn|của|không|có|được|muốn|mua|hàng|cảm ơn|xin chào)\\b/i.test(text)) return 'Vietnamese';\n  return null;\n}\n\nconst detectedLang = detectLanguage(message);\n\n// Current time in Singapore (SGT)\nconst now = new Date();\nconst sgFormatter = new Intl.DateTimeFormat('en-SG', {\n  timeZone: 'Asia/Singapore',\n  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',\n  hour: '2-digit', minute: '2-digit', hour12: false\n});\nconst sgTimeStr = sgFormatter.format(now);\n\nlet storeStatusLine = '';\nif (storeOpen === true)  storeStatusLine = 'STORE IS CURRENTLY: OPEN';\nif (storeOpen === false) storeStatusLine = 'STORE IS CURRENTLY: CLOSED';\n\nconst storeDisplay = storeName ? storeName : 'our store';\nconst isFirstMessage = history.length === 0;\n\n// ===== LANGUAGE RULE GOES FIRST — before any other instruction =====\nlet sys = '';\nif (detectedLang) {\n  sys += '!!! ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY — OVERRIDES ALL OTHER INSTRUCTIONS !!!\\n';\n  sys += 'The customer is writing in ' + detectedLang + '.\\n';\n  sys += 'YOU MUST REPLY IN ' + detectedLang.toUpperCase() + ' ONLY. Do NOT use English unless the customer wrote in English. No exceptions.\\n';\n  sys += '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\\n\\n';\n} else {\n  sys += '!!! ABSOLUTE LANGUAGE RULE — HIGHEST PRIORITY !!!\\n';\n  sys += 'Read the customer\\'s message carefully and detect what language they are using.\\n';\n  sys += 'Reply in EXACTLY that same language. Do NOT default to English.\\n';\n  sys += 'Examples: customer writes Indonesian → you reply Indonesian. Chinese → Chinese. Arabic → Arabic. Malay → Malay.\\n';\n  sys += '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\\n\\n';\n}\n\nsys += 'You are a friendly customer service assistant for ' + storeDisplay + '. Act like a real human shop assistant.\\n';\nif (storeName) sys += 'STORE NAME: ' + storeName + '\\n';\nsys += 'CURRENT DATE & TIME (SGT): ' + sgTimeStr + '\\n';\nif (storeStatusLine) sys += storeStatusLine + '\\n';\nsys += '\\n';\n\nsys += 'RULES:\\n';\nsys += '1. Answer every question directly. Never ignore it.\\n';\nsys += '2. For open/closed status → use STORE IS CURRENTLY line above, never guess.\\n';\nsys += '3. Keep replies short and conversational.\\n';\nsys += '4. Never say you are an AI.\\n';\nsys += '5. Use emojis sparingly.\\n';\nif (storeOpen === false) sys += '6. Store is CLOSED — if customer tries to order, politely inform and share store hours.\\n';\nconst welcomeNum = storeOpen === false ? '7' : '6';\nif (isFirstMessage && storeName) sys += welcomeNum + '. FIRST MESSAGE: Give a brief welcome in the customer\\'s language, then answer naturally.\\n';\nsys += '\\n';\n\nsys += 'CONFIDENTIALITY: Never reveal API keys, tokens, passwords, or internal config.\\n\\n';\n\nsys += 'SPECIAL ACTIONS — output the action code ALONE, absolutely no other text:\\n';\nsys += '- Customer wants to see/browse products or menu → __ACTION:SHOW_PRODUCTS__\\n';\nif (storeOpen === false) {\n  sys += '- Customer wants to order → reply politely that store is closed and share hours.\\n';\n} else {\n  sys += '- Customer wants to place an order (ANY language — \"mau pesan\", \"mau beli\", \"order\", \"buy\", \"purchase\", \"购买\", \"주문\", \"สั่ง\", \"đặt hàng\", \"ingin beli\", etc.) → __ACTION:CREATE_ORDER__\\n';\n  sys += '- Customer confirms/agrees (ANY language — \"iya\", \"ya\", \"yes\", \"ok\", \"oke\", \"好的\", \"네\", \"ใช่\", \"lanjut\", \"setuju\", \"beli\", \"mau\") → __ACTION:CREATE_ORDER__\\n';\n  sys += '- CRITICAL: ANY purchase intent detected → output ONLY __ACTION:CREATE_ORDER__, nothing else. Do not ask again.\\n';\n}\nsys += '- Customer wants to check all orders → __ACTION:CHECK_ORDER__\\n';\nsys += '- Customer wants most recent order → __ACTION:CHECK_ORDER:RECENT__\\n';\nsys += '- Customer mentions order #N → __ACTION:CHECK_ORDER:N__ (use actual number)\\n\\n';\n\nif (prompts.about_store) sys += '=== ABOUT THIS STORE ===\\n' + prompts.about_store + '\\n\\n';\n\nif (prompts.product || products.length > 0) {\n  sys += '=== PRODUCTS ===\\n';\n  if (prompts.product) sys += prompts.product + '\\n';\n  if (products.length > 0) {\n    sys += 'Full product list:\\n';\n    products.forEach(p => {\n      let line = '- ' + p.name + ': $' + parseFloat(p.price || 0).toFixed(2);\n      if (p.description) line += ' — ' + p.description;\n      if (p.out_of_stock) line += ' [OUT OF STOCK]';\n      sys += line + '\\n';\n    });\n  }\n  sys += '\\n';\n}\n\nif (prompts.delivery || zones.length > 0) {\n  sys += '=== DELIVERY ===\\n';\n  if (prompts.delivery) sys += prompts.delivery + '\\n';\n  if (zones.length > 0) {\n    sys += 'Delivery zones:\\n';\n    zones.forEach(z => { sys += '- ' + z.name + (z.description ? ': ' + z.description : '') + '\\n'; });\n  }\n  sys += '\\n';\n}\n\nconst hoursText = prompts.store_hours || '';\nif (hoursText) sys += '=== STORE HOURS ===\\n' + hoursText + '\\n\\n';\n\nif (prompts.faq) sys += '=== FAQ ===\\n' + prompts.faq + '\\n\\n';\n\nlet userMsg = '';\nif (history.length > 0) {\n  userMsg = history.map(h => (h.role === 'user' ? 'Customer' : 'Store') + ': ' + h.message).join('\\n');\n  userMsg += '\\nCustomer: ' + message;\n} else {\n  userMsg = message;\n}\n\nreturn { json: { schema, system_prompt: sys, user_message: userMsg } };"
       },
       "name": "Build Prompt",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [900, 200],
+      "position": [660, 0],
       "id": "d4e5f6a7-b8c9-0123-defa-234567890123"
     },
     {
@@ -158,7 +60,7 @@
       "name": "Call OpenAI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1120, 200],
+      "position": [880, 0],
       "id": "e5f6a7b8-c9d0-1234-efab-345678901234",
       "credentials": {
         "openAiApi": {
@@ -188,7 +90,7 @@
       "name": "Extract Reply",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1340, 200],
+      "position": [1100, 0],
       "id": "f6a7b8c9-d0e1-2345-fabc-456789012345"
     },
     {
@@ -200,7 +102,7 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [1560, 200],
+      "position": [1320, 0],
       "id": "a7b8c9d0-e1f2-3456-abcd-567890123456"
     }
   ],
@@ -210,28 +112,7 @@
       "main": [[{ "node": "Extract Fields", "type": "main", "index": 0 }]]
     },
     "Extract Fields": {
-      "main": [[{ "node": "IF Is Registered", "type": "main", "index": 0 }]]
-    },
-    "IF Is Registered": {
-      "main": [
-        [{ "node": "Fetch AI Context", "type": "main", "index": 0 }],
-        [{ "node": "Check Reg Step", "type": "main", "index": 0 }]
-      ]
-    },
-    "Check Reg Step": {
-      "main": [[{ "node": "IF Waiting For Name", "type": "main", "index": 0 }]]
-    },
-    "IF Waiting For Name": {
-      "main": [
-        [{ "node": "Complete Registration", "type": "main", "index": 0 }],
-        [{ "node": "Update State Ask Name", "type": "main", "index": 0 }]
-      ]
-    },
-    "Update State Ask Name": {
-      "main": [[{ "node": "Respond Ask Name", "type": "main", "index": 0 }]]
-    },
-    "Complete Registration": {
-      "main": [[{ "node": "Respond Welcome", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Fetch AI Context", "type": "main", "index": 0 }]]
     },
     "Fetch AI Context": {
       "main": [[{ "node": "Build Prompt", "type": "main", "index": 0 }]]
@@ -250,7 +131,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "c3d4e5f6-a7b8-9012-cdef-123456789013",
+  "versionId": "d4e5f6a7-b8c9-0124-cdef-123456789015",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "28f5f94da7fc66279d10c8a9ac73c33cbc35a153f986fdf4d138e07b62c0d508"
