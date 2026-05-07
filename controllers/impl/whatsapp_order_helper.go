@@ -142,9 +142,18 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 			guest.ConversationState = domains.JSONB{}
 		}
 		phone := strings.TrimSpace(text)
-		if len(phone) < 8 {
+		validPhone := len(phone) >= 9 && len(phone) <= 16 && phone[0] == '+'
+		if validPhone {
+			for _, c := range phone[1:] {
+				if c < '0' || c > '9' {
+					validPhone = false
+					break
+				}
+			}
+		}
+		if !validPhone {
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"⚠️ Masukkan nomor HP yang valid (contoh: +6281234567890).\n\nKetik 'menu' untuk batal")
+				"⚠️ Format nomor tidak valid.\n\nHarus diawali '+' diikuti kode negara dan nomor HP.\nContoh: +6281234567890\n\nKetik 'menu' untuk batal")
 			return
 		}
 		guest.ConversationState["guest_phone"] = phone
@@ -305,7 +314,20 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		if guest.ConversationState == nil {
 			guest.ConversationState = domains.JSONB{}
 		}
-		guest.ConversationState["customer_email"] = text
+		email := strings.TrimSpace(text)
+		atIdx := strings.Index(email, "@")
+		validEmail := atIdx > 0 && strings.LastIndex(email, "@") == atIdx && !strings.Contains(email, " ")
+		if validEmail {
+			domain := email[atIdx+1:]
+			dotIdx := strings.LastIndex(domain, ".")
+			validEmail = dotIdx > 0 && dotIdx < len(domain)-1
+		}
+		if !validEmail {
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"⚠️ Format email tidak valid.\n\nContoh: nama@gmail.com\n\nKetik 'menu' untuk batal")
+			return
+		}
+		guest.ConversationState["customer_email"] = email
 		guest.ConversationState["order_step"] = "address"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
