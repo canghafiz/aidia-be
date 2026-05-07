@@ -462,20 +462,6 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			guest, _ = cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 		}
 
-		// Check if a customer record already exists for this guest so we can
-		// skip the registration flow for users who are already customers.
-		firstContactIsRegistered := false
-		if guest != nil && guest.Username != "" {
-			if c, _ := cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username); c != nil {
-				firstContactIsRegistered = true
-			}
-		}
-		if !firstContactIsRegistered && !isLID && chatID != "" {
-			if c, _ := cont.CustomerRepo.GetByConcatPhone(cont.Db, schema, chatID); c != nil {
-				firstContactIsRegistered = true
-			}
-		}
-
 		// Save and broadcast the first message
 		if text != "" && guest != nil {
 			incomingMsg := domains.GuestMessage{
@@ -493,7 +479,7 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			guest.LastMessageAt = &now
 			cont.GuestRepo.Update(cont.Db, schema, *guest)
 		}
-		cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, firstContactIsRegistered)
+		cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, true)
 		return
 	}
 
@@ -531,26 +517,6 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 		}
 		guest.Sosmed["jid"] = sendTarget
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
-	}
-
-	// Registration gate — only process text messages; matches Telegram behaviour
-	if text != "" {
-		var isRegisteredCustomer bool
-		if guest.Username != "" {
-			c, _ := cont.CustomerRepo.GetByUsername(cont.Db, schema, guest.Username)
-			isRegisteredCustomer = c != nil
-		}
-		// Also check by phone in case customer was created manually with a different username.
-		// Use PlatformChatID (pure digits) with CONCAT query to avoid country-code split issues.
-		if !isRegisteredCustomer && guest.PlatformChatID != "" && !strings.Contains(guest.PlatformChatID, "@") {
-			if c, _ := cont.CustomerRepo.GetByConcatPhone(cont.Db, schema, guest.PlatformChatID); c != nil {
-				isRegisteredCustomer = true
-			}
-		}
-		if !isRegisteredCustomer {
-			cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, false)
-			return
-		}
 	}
 
 	log.Printf("[WhatsApp] schema=%s from=%s state=%s text=%s", schema, chatID, state, text)

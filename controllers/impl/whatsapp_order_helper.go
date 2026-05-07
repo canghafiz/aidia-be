@@ -27,6 +27,15 @@ func (cont *WhatsAppContImpl) waStartCreateOrder(waClient helpers.WhatsAppSender
 	guest.ConversationState["state"] = "creating_order"
 	guest.ConversationState["guest_phone"] = guest.Phone
 
+	// LID accounts don't expose a real phone number — ask the customer to provide it
+	if guest.Phone == "" {
+		guest.ConversationState["order_step"] = "phone"
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+		cont.sendWABotMessage(waClient, uuid.Nil, guest.ID, guest.Name, chatID, schema,
+			"📱 Please enter your WhatsApp phone number (with country code):\n\nExample: +6281234567890\n\nType 'menu' to cancel")
+		return
+	}
+
 	// Offer tag filter if any tags exist
 	tags, _ := cont.ProductTagRepo.GetAll(cont.Db, schema)
 	if len(tags) > 0 {
@@ -128,6 +137,35 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 	}
 
 	switch orderStep {
+	case "phone":
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
+		}
+		phone := strings.TrimSpace(text)
+		if len(phone) < 8 {
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+				"⚠️ Please enter a valid phone number (e.g. +6281234567890).\n\nType 'menu' to cancel")
+			return
+		}
+		guest.ConversationState["guest_phone"] = phone
+		tags, _ := cont.ProductTagRepo.GetAll(cont.Db, schema)
+		if len(tags) > 0 {
+			tagsJSON, _ := json.Marshal(tags)
+			guest.ConversationState["available_tags"] = string(tagsJSON)
+			guest.ConversationState["order_step"] = "tags"
+			cont.GuestRepo.Update(cont.Db, schema, *guest)
+			msg := "🏷️ Filter products by tag (optional):\n\n"
+			for i, tag := range tags {
+				msg += fmt.Sprintf("%d. %s\n", i+1, tag.Name)
+			}
+			msg += "\nEnter tag number(s) separated by comma (e.g. 1 or 1,2)\n"
+			msg += "Type 'all' to browse all products\n"
+			msg += "Type 'menu' to cancel"
+			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
+		} else {
+			cont.waSendProductList(waClient, chatID, schema, guest, clientID, nil)
+		}
+
 	case "tags":
 		if guest.ConversationState == nil {
 			guest.ConversationState = domains.JSONB{}
@@ -386,11 +424,20 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	log.Printf("[WhatsApp/Order] finalizing: name=%s, email=%s, phone=%s, address=%s, postal=%s, payment=%s",
 		customerName, customerEmail, guestPhone, address, postalCode, selectedPaymentMethod)
 
-	phoneCountryCode := "+62"
+	phoneCountryCode := ""
 	phoneNumber := guestPhone
-	if len(guestPhone) > 3 && guestPhone[0] == '+' {
-		phoneCountryCode = guestPhone[:3]
-		phoneNumber = guestPhone[3:]
+	if guestPhone != "" {
+		digits := strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, guestPhone)
+		digits = strings.TrimLeft(digits, "0")
+		if len(digits) > 2 {
+			phoneCountryCode = digits[:2]
+			phoneNumber = digits[2:]
+		}
 	}
 
 	tx := cont.Db.Begin()
@@ -401,22 +448,36 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 		return
 	}
 
-	// Find or create customer
-	customer, err := cont.CustomerRepo.GetByPhone(tx, schema, phoneCountryCode, phoneNumber)
-	if err != nil && guest.Username != "" {
-		customer, err = cont.CustomerRepo.GetByUsername(tx, schema, guest.Username)
+	toPtr := func(s string) *string {
+		if s == "" {
+			return nil
+		}
+		return &s
 	}
-	if err != nil {
-		customer = &domains.Customer{
+
+	// Find or create customer
+	var customer *domains.Customer
+	if phoneCountryCode != "" {
+		customer, _ = cont.CustomerRepo.GetByConcatPhone(tx, schema, phoneCountryCode+phoneNumber)
+	}
+	if customer == nil && guest.Username != "" {
+		customer, _ = cont.CustomerRepo.GetByUsername(tx, schema, guest.Username)
+	}
+	if customer == nil {
+		newCust := domains.Customer{
 			Name:             customerName,
-			PhoneCountryCode: &phoneCountryCode,
-			PhoneNumber:      &phoneNumber,
+			Username:         toPtr(guest.Username),
+			PhoneCountryCode: toPtr(phoneCountryCode),
+			PhoneNumber:      toPtr(phoneNumber),
+			Address:          toPtr(address),
+			PostalCode:       toPtr(postalCode),
 			AccountType:      "Whatsapp",
 		}
-		customer, err = cont.CustomerRepo.Create(tx, schema, *customer)
-		if err != nil {
+		var createErr error
+		customer, createErr = cont.CustomerRepo.Create(tx, schema, newCust)
+		if createErr != nil {
 			tx.Rollback()
-			log.Printf("[WhatsApp/Order] ERROR: Failed to create customer: %v", err)
+			log.Printf("[WhatsApp/Order] ERROR: Failed to create customer: %v", createErr)
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
 				"❌ Error creating customer. Please try again.")
 			return
@@ -488,7 +549,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 		TagFilterIDs:         tagFilterIDs,
 	}
 
-	order, err = cont.OrderRepo.Create(tx, schema, *order)
+	order, err := cont.OrderRepo.Create(tx, schema, *order)
 	if err != nil {
 		tx.Rollback()
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
@@ -627,7 +688,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	summary += fmt.Sprintf("- Order ID: #%d\n", order.ID)
 	summary += fmt.Sprintf("- Items: %s\n", productsSummary)
 	summary += fmt.Sprintf("- Name: %s\n", customerName)
-	summary += fmt.Sprintf("- Phone: %s%s\n", phoneCountryCode, phoneNumber)
+	summary += fmt.Sprintf("- Phone: %s\n", guestPhone)
 	summary += fmt.Sprintf("- Address: %s\n", address)
 	summary += fmt.Sprintf("- Postal code: %s\n", postalCode)
 	if deliveryCharge > 0 {
