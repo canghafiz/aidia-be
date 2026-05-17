@@ -131,6 +131,30 @@ func (h *WhatsmeowHub) makeEventHandler(schema string) func(interface{}) {
 			from := evt.Info.Chat.User
 			replyJID := evt.Info.Chat.String()
 			name := evt.Info.PushName
+
+			// For LID accounts, try to resolve the real phone number using free (no-network) methods.
+			// from stays as LID digits if resolution fails; controller handles the GetUserInfo fallback.
+			if evt.Info.Chat.Server == types.HiddenUserServer {
+				// Tier 1: SenderAlt — embedded in message metadata, zero cost
+				if evt.Info.SenderAlt.Server == types.DefaultUserServer && evt.Info.SenderAlt.User != "" {
+					from = evt.Info.SenderAlt.User
+					log.Printf("[WhatsmeowHub] SenderAlt resolved lid=%s → phone=%s", evt.Info.Chat.User, from)
+				} else {
+					// Tier 2: local LID→PN cache in device store, no network call
+					h.mu.RLock()
+					client, ok := h.clients[schema]
+					h.mu.RUnlock()
+					if ok && client != nil {
+						if pn, err := client.Store.LIDs.GetPNForLID(context.Background(), evt.Info.Chat); err == nil && pn.User != "" {
+							from = pn.User
+							log.Printf("[WhatsmeowHub] LID cache resolved lid=%s → phone=%s", evt.Info.Chat.User, from)
+						} else {
+							log.Printf("[WhatsmeowHub] LID unresolved locally lid=%s SenderAlt.Server=%q", evt.Info.Chat.User, evt.Info.SenderAlt.Server)
+						}
+					}
+				}
+			}
+
 			log.Printf("[WhatsmeowHub] schema=%s from=%s replyJID=%s text=%.40s", schema, from, replyJID, text)
 			if h.handler != nil {
 				h.handler(schema, from, name, text, replyJID)
@@ -282,6 +306,42 @@ func (h *WhatsmeowHub) GetPhone(schema string) string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.phones[schema]
+}
+
+// GetPhoneForLID resolves a LID JID string to a real phone number via a WA network call (GetUserInfo).
+// Only call this for brand-new guests (first message, not yet in DB) to avoid WA rate-limiting.
+// Returns "" on failure or if the schema is not connected.
+func (h *WhatsmeowHub) GetPhoneForLID(schema, lidJIDStr string) string {
+	h.mu.RLock()
+	client, ok := h.clients[schema]
+	h.mu.RUnlock()
+	if !ok || client == nil || !client.IsConnected() {
+		return ""
+	}
+
+	lidJID, err := types.ParseJID(lidJIDStr)
+	if err != nil || lidJID.Server != types.HiddenUserServer {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	infoMap, err := client.GetUserInfo(ctx, []types.JID{lidJID})
+	if err != nil {
+		log.Printf("[WhatsmeowHub] GetPhoneForLID GetUserInfo failed lid=%s: %v", lidJIDStr, err)
+		return ""
+	}
+
+	// WA may return the result indexed by the PN-JID (phone@s.whatsapp.net)
+	for jid := range infoMap {
+		if jid.Server == types.DefaultUserServer && jid.User != "" {
+			log.Printf("[WhatsmeowHub] GetPhoneForLID resolved lid=%s → phone=%s", lidJIDStr, jid.User)
+			return jid.User
+		}
+	}
+	log.Printf("[WhatsmeowHub] GetPhoneForLID no phone in response for lid=%s", lidJIDStr)
+	return ""
 }
 
 // GetSender returns a WhatsAppSender for the schema, or nil if not connected.

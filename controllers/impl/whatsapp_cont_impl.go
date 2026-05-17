@@ -399,12 +399,36 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 		phoneFormatted = "+" + chatID
 	}
 
-	// Extract sender name from contacts
+	// Meta Cloud API sends the real phone number in contacts[].wa_id even when
+	// `from` contains a LID (Cloud API omits the @lid suffix, so isLID=false).
+	// whatsmeow builds contacts manually with wa_id == chatID, so this block is a no-op there.
+	// In both cases: if any contact has a wa_id different from chatID, that IS the real phone.
+	log.Printf("[WhatsApp] from=%s chatID=%s isLID=%v contacts=%+v", from, chatID, isLID, contacts)
+	for _, c := range contacts {
+		if c.WaID != "" && c.WaID != chatID {
+			phoneFormatted = "+" + c.WaID
+			log.Printf("[WhatsApp] real phone resolved from contacts: from=%s phone=%s", chatID, phoneFormatted)
+			break
+		}
+	}
+
+	// Extract sender name — wa_id may differ from chatID for LID/Cloud API accounts.
 	senderName := chatID
 	for _, c := range contacts {
-		if c.WaID == chatID && c.Profile.Name != "" {
+		if c.Profile.Name == "" {
+			continue
+		}
+		if c.WaID == chatID || (phoneFormatted != "" && c.WaID == phoneFormatted[1:]) {
 			senderName = c.Profile.Name
 			break
+		}
+	}
+	if senderName == chatID {
+		for _, c := range contacts {
+			if c.Profile.Name != "" {
+				senderName = c.Profile.Name
+				break
+			}
 		}
 	}
 
@@ -417,6 +441,20 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 		if phoneFormatted != "" {
 			if g, phoneErr := cont.GuestRepo.FindByPhone(cont.Db, schema, phoneFormatted); phoneErr == nil && g != nil {
 				existingGuest = g
+			}
+		}
+
+		// 2. For new LID guests where phone is still unresolved, try a one-time network call.
+		//    Tier 1 (SenderAlt) and Tier 2 (local cache) were already attempted in the hub event handler.
+		//    This Tier 3 call is rate-limit safe because it only runs for truly new guests.
+		if isLID && phoneFormatted == "" && existingGuest == nil && cont.WhatsmeowHub != nil {
+			if resolved := cont.WhatsmeowHub.GetPhoneForLID(schema, sendTarget); resolved != "" {
+				phoneFormatted = "+" + resolved
+				log.Printf("[WhatsApp] GetPhoneForLID resolved lid=%s → phone=%s", chatID, phoneFormatted)
+				// Re-check DB in case a guest with this phone already exists
+				if g, phoneErr := cont.GuestRepo.FindByPhone(cont.Db, schema, phoneFormatted); phoneErr == nil && g != nil {
+					existingGuest = g
+				}
 			}
 		}
 
@@ -434,12 +472,18 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			cont.GuestRepo.Update(cont.Db, schema, *existingGuest)
 			guest = existingGuest
 		} else {
-			// New guest — phone is only set for real phone-based JIDs, never for LIDs.
+			// New guest — for regular JIDs use the E.164 phone; for LID JIDs use
+			// the LID digits (chatID) as the unique identifier so downstream code
+			// (order creation, status lookup) has a consistent non-empty value.
+			guestPhoneVal := phoneFormatted
+			if guestPhoneVal == "" {
+				guestPhoneVal = chatID
+			}
 			guest = &domains.Guest{
 				TenantID:       &tenantID,
 				Identity:       chatID,
 				Username:       chatID,
-				Phone:          phoneFormatted,
+				Phone:          guestPhoneVal,
 				Name:           senderName,
 				Platform:       "whatsapp",
 				PlatformChatID: chatID,
@@ -460,6 +504,28 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			}
 
 			guest, _ = cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
+		}
+
+		// Auto-register Customer using the best available identifier:
+		// real phone digits (when resolved from contacts) or LID/chatID as fallback.
+		if guest != nil {
+			phoneDigits := chatID
+			if phoneFormatted != "" {
+				phoneDigits = phoneFormatted[1:] // strip leading "+"
+			}
+			if _, lookupErr := cont.CustomerRepo.GetByConcatPhone(cont.Db, schema, phoneDigits); lookupErr != nil {
+				name := guest.Name
+				if name == "" || name == chatID {
+					name = senderName
+				}
+				cc, local := helpers.SplitE164(phoneDigits)
+				_, _ = cont.CustomerRepo.Create(cont.Db, schema, domains.Customer{
+					Name:             name,
+					PhoneCountryCode: &cc,
+					PhoneNumber:      &local,
+					AccountType:      "Whatsapp",
+				})
+			}
 		}
 
 		// Save and broadcast the first message
@@ -521,40 +587,16 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 
 	log.Printf("[WhatsApp] schema=%s from=%s state=%s text=%s", schema, chatID, state, text)
 
-	// Initial state — newly registered customer; mirrors Telegram's "" / "registered" block
-	if state == "" || state == "registered" {
-		if text == "2" {
-			if !cont.waIsOperationalHoursOpen(schema) {
-				cont.sendWABotMessage(waClient, user.UserID, guest.ID, guest.Name, sendTarget, schema,
-					"⏰ Maaf, saat ini di luar jam operasional kami. Silakan coba lagi saat jam buka.")
-			} else {
-				cont.waStartCreateOrder(waClient, sendTarget, schema, guest)
-				cont.setGuestState(schema, guest, "creating_order")
-			}
-			return
-		}
-		// Any other input — advance state then let AI reply naturally
-		if guest.ConversationState == nil {
-			guest.ConversationState = domains.JSONB{}
-		}
-		guest.ConversationState["state"] = "waiting_for_menu"
-		cont.GuestRepo.Update(cont.Db, schema, *guest)
-		cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, true)
-		return
-	}
-
 	// Route based on state
 	switch state {
 	case "creating_order":
 		cont.waContinueCreateOrder(waClient, sendTarget, schema, guest, text, user.UserID)
 
 	case "pending_order_confirmation":
-		if strings.EqualFold(text, "menu") {
-			cont.waShowMenu(waClient, sendTarget, schema, guest, user.UserID)
-		} else if isPositiveResponse(text) {
+		if isPositiveResponse(text) {
 			if !cont.waIsOperationalHoursOpen(schema) {
 				cont.sendWABotMessage(waClient, user.UserID, guest.ID, guest.Name, sendTarget, schema,
-					"⏰ Maaf, saat ini di luar jam operasional kami. Silakan coba lagi saat jam buka.")
+					"⏰ Sorry, we are currently outside our operating hours. Please try again during opening hours.")
 			} else {
 				cont.setGuestState(schema, guest, "creating_order")
 				cont.waStartCreateOrder(waClient, sendTarget, schema, guest)
@@ -564,36 +606,15 @@ func (cont *WhatsAppContImpl) handleIncomingMessage(schema, from, text string, c
 			cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, true)
 		}
 
-	case "waiting_for_menu", "browsing_products", "checking_order", "asking_faq":
-		switch text {
-		case "1":
-			cont.waShowProducts(waClient, sendTarget, schema, guest, user.UserID)
-			cont.setGuestState(schema, guest, "browsing_products")
-
-		case "2":
-			if !cont.waIsOperationalHoursOpen(schema) {
-				cont.sendWABotMessage(waClient, user.UserID, guest.ID, guest.Name, sendTarget, schema,
-					"⏰ Maaf, saat ini di luar jam operasional kami. Silakan coba lagi saat jam buka.")
-			} else {
-				cont.waStartCreateOrder(waClient, sendTarget, schema, guest)
-				cont.setGuestState(schema, guest, "creating_order")
-			}
-
-		case "3":
-			cont.waShowOrderStatus(waClient, sendTarget, guest.Phone, schema, -1, user.UserID)
-			cont.setGuestState(schema, guest, "checking_order")
-
-		case "4":
-			cont.setGuestState(schema, guest, "asking_faq")
-			cont.waHandleAIMessage(waClient, sendTarget, guest, "Hi, I'd like to know the FAQ for this store.", schema, user.UserID, tenantID, true)
-
-		default:
-			if strings.EqualFold(text, "menu") {
-				cont.waShowMenu(waClient, sendTarget, schema, guest, user.UserID)
-			} else {
-				cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, true)
-			}
+	default:
+		// All other states (registered, waiting_for_menu, browsing_products, checking_order, asking_faq, "")
+		// go directly to the AI — no numbered menu.
+		if guest.ConversationState == nil {
+			guest.ConversationState = domains.JSONB{}
 		}
+		guest.ConversationState["state"] = "waiting_for_menu"
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+		cont.waHandleAIMessage(waClient, sendTarget, guest, text, schema, user.UserID, tenantID, true)
 	}
 }
 
@@ -667,12 +688,12 @@ func (cont *WhatsAppContImpl) setGuestState(schema string, guest *domains.Guest,
 
 // waShowMenu sends the main menu
 func (cont *WhatsAppContImpl) waShowMenu(waClient helpers.WhatsAppSender, chatID, schema string, guest *domains.Guest, clientID uuid.UUID) {
-	menu := "Ada yang bisa kami bantu? 😊\n\n"
-	menu += "Ketik 1 - Lihat Produk\n"
-	menu += "Ketik 2 - Buat Pesanan\n"
-	menu += "Ketik 3 - Cek Status Pesanan\n"
-	menu += "Ketik 4 - FAQ\n\n"
-	menu += "Ketik angka 1, 2, 3, atau 4"
+	menu := "How can we help you? 😊\n\n"
+	menu += "Type 1 - Browse Products\n"
+	menu += "Type 2 - Place an Order\n"
+	menu += "Type 3 - Check Order Status\n"
+	menu += "Type 4 - FAQ\n\n"
+	menu += "Type 1, 2, 3, or 4"
 	cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, menu)
 	cont.setGuestState(schema, guest, "waiting_for_menu")
 }
@@ -682,7 +703,7 @@ func (cont *WhatsAppContImpl) waShowProducts(waClient helpers.WhatsAppSender, ch
 	products, total, err := cont.ProductRepo.GetAll(cont.Db, schema, domains.Pagination{Page: 1, Limit: 10})
 	if err != nil || total == 0 {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"📦 Tidak ada produk tersedia saat ini.\n\nKetik 'menu' untuk kembali.")
+			"📦 No products available at the moment.\n\nType 'menu' to go back.")
 		return
 	}
 
@@ -691,10 +712,10 @@ func (cont *WhatsAppContImpl) waShowProducts(waClient helpers.WhatsAppSender, ch
 		appURL = "https://data.ai-dia.com"
 	}
 
-	message := "📦 Produk Kami:\n\n"
+	message := "📦 Our Products:\n\n"
 	for i, p := range products {
 		message += fmt.Sprintf("%d. %s\n", i+1, p.Name)
-		message += fmt.Sprintf("   Harga: $%s\n", formatSGDPrice(p.Price))
+		message += fmt.Sprintf("   Price: $%s\n", formatSGDPrice(p.Price))
 
 		if len(p.Images) > 0 && p.Images[0].Image != "" {
 			message += fmt.Sprintf("   Image: %s%s\n", appURL, p.Images[0].Image)
@@ -706,7 +727,7 @@ func (cont *WhatsAppContImpl) waShowProducts(waClient helpers.WhatsAppSender, ch
 			message += "\n"
 		}
 	}
-	message += "Ketik 'menu' untuk kembali ke menu utama."
+	message += "Type 'menu' to return to the main menu."
 	cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, message)
 }
 
@@ -714,11 +735,14 @@ func (cont *WhatsAppContImpl) waShowProducts(waClient helpers.WhatsAppSender, ch
 func (cont *WhatsAppContImpl) waShowOrderStatus(waClient helpers.WhatsAppSender, chatID, phone, schema string, orderID int, clientID uuid.UUID) {
 	guest, err := cont.GuestRepo.FindByPlatformChatID(cont.Db, schema, chatID)
 	if err != nil || guest == nil {
-		waClient.SendMessage(chatID, "📦 Pesanan tidak ditemukan.\n\nKetik 'menu' untuk kembali.")
+		waClient.SendMessage(chatID, "📦 Order not found.\n\nType 'menu' to go back.")
 		return
 	}
 
 	guestPhone := guest.Phone
+	if guestPhone == "" {
+		guestPhone = guest.PlatformChatID
+	}
 	phoneNumber := guestPhone
 	if len(guestPhone) > 3 && guestPhone[0] == '+' {
 		phoneNumber = guestPhone[3:]
@@ -728,7 +752,7 @@ func (cont *WhatsAppContImpl) waShowOrderStatus(waClient helpers.WhatsAppSender,
 		order, err := cont.OrderRepo.GetByID(cont.Db, schema, orderID)
 		if err != nil || order == nil {
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				fmt.Sprintf("📦 Pesanan #%d tidak ditemukan.\n\nKetik 'menu' untuk kembali.", orderID))
+				fmt.Sprintf("📦 Order #%d not found.\n\nType 'menu' to go back.", orderID))
 			return
 		}
 		cont.waSendOrderStatusMessage(waClient, chatID, schema, guest, []domains.Order{*order}, clientID)
@@ -738,14 +762,14 @@ func (cont *WhatsAppContImpl) waShowOrderStatus(waClient helpers.WhatsAppSender,
 	customer, err := cont.OrderRepo.GetCustomerByPhone(cont.Db, schema, phoneNumber)
 	if err != nil {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"📦 Pesanan tidak ditemukan.\n\nKetik 'menu' untuk kembali.")
+			"📦 No orders found.\n\nType 'menu' to go back.")
 		return
 	}
 
 	orders, err := cont.OrderRepo.GetByCustomerID(cont.Db, schema, customer.ID)
 	if err != nil || len(orders) == 0 {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"📦 Kamu belum memiliki pesanan.\n\nKetik 'menu' untuk kembali.")
+			"📦 You have no orders yet.\n\nType 'menu' to go back.")
 		return
 	}
 
@@ -785,7 +809,7 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient helpers.WhatsApp
 		for _, p := range o.Products {
 			name := productNames[p.ProductID]
 			if name == "" {
-				name = "Produk"
+				name = "Item"
 			}
 			if itemParts != "" {
 				itemParts += ", "
@@ -809,15 +833,15 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient helpers.WhatsApp
 			}
 		}
 
-		msg := fmt.Sprintf("Toko: %s\n\n", storeName)
-		msg += fmt.Sprintf("Pesanan #%d\n\n", o.ID)
-		msg += fmt.Sprintf("Item Pesanan: %s\n\n", itemParts)
-		msg += fmt.Sprintf("Layanan: %s (%s)\n\n", service, orderDate)
+		msg := fmt.Sprintf("Store: %s\n\n", storeName)
+		msg += fmt.Sprintf("Order #%d\n\n", o.ID)
+		msg += fmt.Sprintf("Items: %s\n\n", itemParts)
+		msg += fmt.Sprintf("Service: %s (%s)\n\n", service, orderDate)
 		msg += fmt.Sprintf("Total: $%s\n\n", formatPriceSGD(o.TotalPrice))
 		if customerName != "" {
-			msg += fmt.Sprintf("Pelanggan: %s %s\n\n", customerName, customerPhone)
+			msg += fmt.Sprintf("Customer: %s %s\n\n", customerName, customerPhone)
 		}
-		msg += fmt.Sprintf("Lihat detail pesanan - %s", detailURL)
+		msg += fmt.Sprintf("View order details - %s", detailURL)
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
 	}
 
@@ -838,15 +862,15 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient helpers.WhatsApp
 			statusEmoji = "✔️"
 		}
 
-		paymentInfo := "Belum dibayar"
+		paymentInfo := "Unpaid"
 		if o.Payment != nil {
 			switch o.Payment.PaymentStatus {
 			case domains.PaymentStatusConfirmingPayment:
-				paymentInfo = "Sedang dikonfirmasi"
+				paymentInfo = "Confirming payment"
 			case domains.PaymentStatusRefunded:
-				paymentInfo = "Dikembalikan"
+				paymentInfo = "Refunded"
 			case domains.PaymentStatusVoided:
-				paymentInfo = "Kedaluwarsa"
+				paymentInfo = "Expired"
 			}
 		}
 
@@ -854,7 +878,7 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient helpers.WhatsApp
 		for _, p := range o.Products {
 			name := productNames[p.ProductID]
 			if name == "" {
-				name = "Produk"
+				name = "Item"
 			}
 			if itemParts != "" {
 				itemParts += ", "
@@ -863,7 +887,7 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient helpers.WhatsApp
 		}
 
 		detailURL := fmt.Sprintf("%s/orders/%s/%d", appURL, schema, o.ID)
-		pendingMsg += fmt.Sprintf("%s Pesanan #%d - %s\n", statusEmoji, o.ID, o.Status)
+		pendingMsg += fmt.Sprintf("%s Order #%d - %s\n", statusEmoji, o.ID, o.Status)
 		if itemParts != "" {
 			pendingMsg += fmt.Sprintf("   Item: %s\n", itemParts)
 		}
@@ -873,7 +897,7 @@ func (cont *WhatsAppContImpl) waSendOrderStatusMessage(waClient helpers.WhatsApp
 
 	if pendingMsg != "" {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"📦 Pesanan Kamu:\n\n"+pendingMsg+"Ketik 'menu' untuk kembali.")
+			"📦 Your Orders:\n\n"+pendingMsg+"Type 'menu' to go back.")
 	}
 }
 
@@ -906,7 +930,7 @@ func (cont *WhatsAppContImpl) waHandleAIMessage(waClient helpers.WhatsAppSender,
 	// Check bot active hours — outside these hours the bot does not auto-reply
 	if !cont.waIsBotActiveHours(schema) {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"🤖 Asisten AI kami sedang offline. Silakan hubungi kami kembali pada jam operasional. Terima kasih atas kesabaranmu!")
+			"🤖 Our AI assistant is currently offline. Please contact us during operating hours. Thank you for your patience!")
 		return
 	}
 
@@ -927,7 +951,7 @@ func (cont *WhatsAppContImpl) waHandleAIMessage(waClient helpers.WhatsAppSender,
 		n8nResp, err := cont.N8NServ.ProcessMessage(schema, guestID.String(), chatID, message, "", history, isRegistered, clientID.String(), guestUsername, storeName, convState)
 		if err != nil {
 			log.Printf("[WhatsApp/AI] n8n error: %v", err)
-			waClient.SendMessage(chatID, "⚠️ Maaf, terjadi masalah teknis. Silakan coba lagi nanti.")
+			waClient.SendMessage(chatID, "⚠️ Sorry, a technical issue occurred. Please try again later.")
 			return
 		}
 
@@ -1110,17 +1134,8 @@ func (cont *WhatsAppContImpl) waIsOperationalHoursOpen(schema string) bool {
 }
 
 // waIsBotActiveHours returns true if the AI bot should auto-respond right now.
-// Reads ai-operational-prompt (AI Operational); falls back to store-operational-hours.
+// Uses store-operational-hours as the single source of truth for bot active/offline.
 func (cont *WhatsAppContImpl) waIsBotActiveHours(schema string) bool {
-	settings, err := cont.SettingRepo.GetByGroupAndSubGroupName(cont.Db, schema, "ai_prompt", "AI Operational")
-	if err == nil {
-		for _, s := range settings {
-			if s.Name == "ai-operational-prompt" && s.Value != "" {
-				open, _ := helpers.IsWithinOperationalHours(s.Value, cont.waGetTimezone(schema))
-				return open
-			}
-		}
-	}
 	return cont.waIsStoreOpen(schema)
 }
 
@@ -1299,7 +1314,7 @@ func (cont *WhatsAppContImpl) GetAIContextForSchema(ctx *gin.Context) {
 	prompts := map[string]string{
 		"product":     getPrompt("AI Product", "ai-product-prompt"),
 		"delivery":    getPrompt("AI Delivery", "ai-delivery-prompt"),
-		"operational": helpers.FormatOperationalHoursForAI(getPrompt("AI Operational", "ai-operational-prompt")),
+		"operational": helpers.FormatOperationalHoursForAI(storeHoursJSON),
 		"about_store": getPrompt("AI About Store", "ai-about-store-prompt"),
 		"faq":         getPrompt("AI FAQ", "ai-faq-prompt"),
 		"store_hours": helpers.FormatOperationalHoursForAI(storeHoursJSON),
@@ -1353,11 +1368,23 @@ func (cont *WhatsAppContImpl) GetAIContextForSchema(ctx *gin.Context) {
 		}
 	}
 
+	// --- Knowledge Base ---
+	type kbRow struct{ ExtractedText string }
+	var kbRows []kbRow
+	cont.Db.Raw(fmt.Sprintf(`SELECT extracted_text FROM "%s".knowledge_base WHERE extracted_text != '' ORDER BY created_at DESC LIMIT 10`, schema)).Scan(&kbRows)
+	var knowledgeBaseTexts []string
+	for _, row := range kbRows {
+		if t := strings.TrimSpace(row.ExtractedText); t != "" {
+			knowledgeBaseTexts = append(knowledgeBaseTexts, t)
+		}
+	}
+
 	ctx.JSON(200, gin.H{
-		"store_open":     storeOpen,
-		"prompts":        prompts,
-		"products":       products,
-		"delivery_zones": deliveryZones,
+		"store_open":           storeOpen,
+		"prompts":              prompts,
+		"products":             products,
+		"delivery_zones":       deliveryZones,
+		"knowledge_base_texts": knowledgeBaseTexts,
 	})
 }
 

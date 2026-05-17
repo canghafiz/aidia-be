@@ -1221,14 +1221,9 @@ func (cont *TelegramContImpl) isOperationalHoursOpen(schema string) bool {
 }
 
 // isBotActiveHours returns true if the AI bot should auto-respond right now.
-// Reads ai-operational-prompt (AI Operational); falls back to store-operational-hours.
+// Uses store-operational-hours as the single source of truth for bot active/offline.
 func (cont *TelegramContImpl) isBotActiveHours(schema string) bool {
-	hoursJSON := cont.getAIPromptSetting(schema, "AI Operational", "ai-operational-prompt")
-	if hoursJSON == "" {
-		return cont.isStoreOpen(schema)
-	}
-	open, _ := helpers.IsWithinOperationalHours(hoursJSON, cont.getTenantTimezone(schema))
-	return open
+	return cont.isStoreOpen(schema)
 }
 
 // isManualMode returns true when the tenant has switched to manual operator mode.
@@ -1292,7 +1287,7 @@ func (cont *TelegramContImpl) GetAIContextForSchema(ctx *gin.Context) {
 	prompts := map[string]string{
 		"product":     cont.getAIPromptSetting(schema, "AI Product", "ai-product-prompt"),
 		"delivery":    cont.getAIPromptSetting(schema, "AI Delivery", "ai-delivery-prompt"),
-		"operational": helpers.FormatOperationalHoursForAI(cont.getAIPromptSetting(schema, "AI Operational", "ai-operational-prompt")),
+		"operational": helpers.FormatOperationalHoursForAI(storeHoursJSON),
 		"about_store": cont.getAIPromptSetting(schema, "AI About Store", "ai-about-store-prompt"),
 		"faq":         cont.getAIPromptSetting(schema, "AI FAQ", "ai-faq-prompt"),
 		"store_hours": helpers.FormatOperationalHoursForAI(storeHoursJSON),
@@ -1362,13 +1357,25 @@ func (cont *TelegramContImpl) GetAIContextForSchema(ctx *gin.Context) {
 		WHERE u.tenant_schema = ?
 		LIMIT 1`, schema).Scan(&storeName)
 
+	// --- Knowledge Base ---
+	type kbRow struct{ ExtractedText string }
+	var kbRows []kbRow
+	cont.Db.Raw(fmt.Sprintf(`SELECT extracted_text FROM "%s".knowledge_base WHERE extracted_text != '' ORDER BY created_at DESC LIMIT 10`, schema)).Scan(&kbRows)
+	var knowledgeBaseTexts []string
+	for _, row := range kbRows {
+		if t := strings.TrimSpace(row.ExtractedText); t != "" {
+			knowledgeBaseTexts = append(knowledgeBaseTexts, t)
+		}
+	}
+
 	ctx.JSON(200, gin.H{
-		"schema":         schema,
-		"store_name":     storeName,
-		"store_open":     storeOpen,
-		"prompts":        prompts,
-		"products":       products,
-		"delivery_zones": deliveryZones,
+		"schema":                schema,
+		"store_name":            storeName,
+		"store_open":            storeOpen,
+		"prompts":               prompts,
+		"products":              products,
+		"delivery_zones":        deliveryZones,
+		"knowledge_base_texts":  knowledgeBaseTexts,
 	})
 }
 

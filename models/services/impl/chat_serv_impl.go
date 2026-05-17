@@ -171,12 +171,6 @@ func (serv *ChatServImpl) GetConversations(accessToken string, clientID uuid.UUI
 		return nil, err
 	}
 
-	if platform == "telegram" {
-		if _, err := serv.getTelegramBotToken(schema); err != nil {
-			return nil, err
-		}
-	}
-
 	guests, total, err := serv.GuestRepo.FindAllByTenantID(serv.Db, schema, tenantID, platform, pagination)
 	if err != nil {
 		return nil, err
@@ -237,12 +231,6 @@ func (serv *ChatServImpl) GetConversationDetail(accessToken string, clientID, gu
 	schema, _, err := serv.resolveTenant(accessToken, clientID)
 	if err != nil {
 		return nil, err
-	}
-
-	if platform == "telegram" {
-		if _, err := serv.getTelegramBotToken(schema); err != nil {
-			return nil, err
-		}
 	}
 
 	guest, err := serv.GuestRepo.FindByID(serv.Db, schema, guestID)

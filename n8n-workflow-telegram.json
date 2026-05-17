@@ -102,7 +102,7 @@
     },
     {
       "parameters": {
-        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/telegram/' + $('Extract Data').first().json.schema + '/ai-context' }}",
+        "url": "={{ 'https://6061-2001-448a-1151-793e-751f-fd60-2080-f25e.ngrok-free.app/api/v1/internal/telegram/' + $('Extract Data').first().json.schema + '/ai-context' }}",
         "options": {}
       },
       "name": "Fetch AI Context",
@@ -219,7 +219,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/guest/' + $('Registration Logic').first().json.schema + '/' + $('Registration Logic').first().json.guest_id + '/registration-complete' }}",
+        "url": "={{ 'https://6061-2001-448a-1151-793e-751f-fd60-2080-f25e.ngrok-free.app/api/v1/internal/guest/' + $('Registration Logic').first().json.schema + '/' + $('Registration Logic').first().json.guest_id + '/registration-complete' }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Registration Logic').first().json.customer_data) }}",
@@ -234,7 +234,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ 'https://98b1-2001-448a-1151-5591-476-e17a-2cff-f448.ngrok-free.app/api/v1/internal/guest/' + $('Registration Logic').first().json.schema + '/' + $('Registration Logic').first().json.guest_id + '/conversation-state' }}",
+        "url": "={{ 'https://6061-2001-448a-1151-793e-751f-fd60-2080-f25e.ngrok-free.app/api/v1/internal/guest/' + $('Registration Logic').first().json.schema + '/' + $('Registration Logic').first().json.guest_id + '/conversation-state' }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Registration Logic').first().json.new_state) }}",

@@ -24,15 +24,24 @@ func (cont *WhatsAppContImpl) waStartCreateOrder(waClient helpers.WhatsAppSender
 	if guest.ConversationState == nil {
 		guest.ConversationState = domains.JSONB{}
 	}
-	guest.ConversationState["state"] = "creating_order"
-	guest.ConversationState["guest_phone"] = guest.Phone
 
-	// LID accounts don't expose a real phone number — ask the customer to provide it
-	if guest.Phone == "" {
+	// LID guests created before the auto-phone fix may have Phone = "".
+	// Fall back to PlatformChatID (the LID digits) so the order flow proceeds
+	// without prompting the customer for a number they cannot easily provide.
+	effectivePhone := guest.Phone
+	if effectivePhone == "" && guest.PlatformChatID != "" {
+		effectivePhone = guest.PlatformChatID
+		guest.Phone = effectivePhone
+	}
+
+	guest.ConversationState["state"] = "creating_order"
+	guest.ConversationState["guest_phone"] = effectivePhone
+
+	if effectivePhone == "" {
 		guest.ConversationState["order_step"] = "phone"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 		cont.sendWABotMessage(waClient, uuid.Nil, guest.ID, guest.Name, chatID, schema,
-			"📱 Masukkan nomor WhatsApp kamu (dengan kode negara):\n\nContoh: +6281234567890\n\nKetik 'menu' untuk batal")
+			"📱 Please enter your WhatsApp number (with country code):\n\nExample: +6281234567890\n\nType 'menu' to cancel")
 		return
 	}
 
@@ -44,13 +53,13 @@ func (cont *WhatsAppContImpl) waStartCreateOrder(waClient helpers.WhatsAppSender
 		guest.ConversationState["order_step"] = "tags"
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
-		msg := "🏷️ Filter produk berdasarkan tag (opsional):\n\n"
+		msg := "🏷️ Filter products by tag (optional):\n\n"
 		for i, tag := range tags {
 			msg += fmt.Sprintf("%d. %s\n", i+1, tag.Name)
 		}
-		msg += "\nMasukkan nomor tag, pisahkan dengan koma (contoh: 1 atau 1,2)\n"
-		msg += "Ketik 'all' untuk lihat semua produk\n"
-		msg += "Ketik 'menu' untuk batal"
+		msg += "\nEnter tag number(s), comma-separated (e.g. 1 or 1,2)\n"
+		msg += "Type 'all' to see all products\n"
+		msg += "Type 'menu' to cancel"
 		cont.sendWABotMessage(waClient, uuid.Nil, guest.ID, guest.Name, chatID, schema, msg)
 		return
 	}
@@ -71,27 +80,27 @@ func (cont *WhatsAppContImpl) waSendProductList(waClient helpers.WhatsAppSender,
 
 	if total == 0 {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"📦 Tidak ada produk tersedia untuk tag yang dipilih.\n\nKetik 'menu' untuk kembali.")
+			"📦 No products available for the selected tag.\n\nType 'menu' to go back.")
 		return
 	}
 
-	message := "🛒 Pilih produk yang ingin dipesan:\n\n"
+	message := "🛒 Select products to order:\n\n"
 	for i, p := range products {
 		line := fmt.Sprintf("%d. %s - $%s", i+1, p.Name, formatPriceSGD(p.Price))
 		if p.IsOutOfStock {
-			line += " (HABIS)"
+			line += " (OUT OF STOCK)"
 		} else if p.ProductQuantity > 0 {
-			line += fmt.Sprintf(" (sisa %d)", p.ProductQuantity)
+			line += fmt.Sprintf(" (%d left)", p.ProductQuantity)
 		}
 		message += line + "\n"
 		if p.Description != nil && *p.Description != "" {
 			message += fmt.Sprintf("   %s\n", *p.Description)
 		}
 	}
-	message += "\nSebutkan produk dan jumlahnya, contoh:\n"
-	message += "• '1 Mie Tek Tek'\n"
-	message += "• '2 Nasi Goreng dan 1 Es Teh'\n"
-	message += "\nKetik 'menu' untuk batal"
+	message += "\nState the product and quantity, e.g.:\n"
+	message += "• '1 Chicken Rice'\n"
+	message += "• '2 Fried Rice and 1 Iced Tea'\n"
+	message += "\nType 'menu' to cancel"
 
 	guest.ConversationState["order_step"] = "products"
 	cont.GuestRepo.Update(cont.Db, schema, *guest)
@@ -100,7 +109,7 @@ func (cont *WhatsAppContImpl) waSendProductList(waClient helpers.WhatsAppSender,
 
 // waContinueCreateOrder continues the order creation flow
 func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSender, chatID, schema string, guest *domains.Guest, text string, clientID uuid.UUID) {
-	if strings.EqualFold(text, "menu") {
+	if strings.EqualFold(text, "menu") || strings.EqualFold(text, "cancel") {
 		if guest.ConversationState == nil {
 			guest.ConversationState = domains.JSONB{}
 		}
@@ -117,7 +126,8 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		delete(guest.ConversationState, "available_tags")
 		delete(guest.ConversationState, "delivery_charge")
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
-		cont.waShowMenu(waClient, chatID, schema, guest, clientID)
+		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+			"✅ Order cancelled. How else can I help you?")
 		return
 	}
 
@@ -132,7 +142,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 
 	if orderStep == "" {
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"⚠️ Sesi pesanan kadaluwarsa. Ketik 'menu' untuk mulai ulang.")
+			"⚠️ Order session expired. Type 'menu' to start over.")
 		return
 	}
 
@@ -153,7 +163,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		}
 		if !validPhone {
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"⚠️ Format nomor tidak valid.\n\nHarus diawali '+' diikuti kode negara dan nomor HP.\nContoh: +6281234567890\n\nKetik 'menu' untuk batal")
+				"⚠️ Invalid number format.\n\nMust start with '+' followed by country code and phone number.\nExample: +6281234567890\n\nType 'menu' to cancel")
 			return
 		}
 		guest.ConversationState["guest_phone"] = phone
@@ -163,13 +173,13 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 			guest.ConversationState["available_tags"] = string(tagsJSON)
 			guest.ConversationState["order_step"] = "tags"
 			cont.GuestRepo.Update(cont.Db, schema, *guest)
-			msg := "🏷️ Filter produk berdasarkan tag (opsional):\n\n"
+			msg := "🏷️ Filter products by tag (optional):\n\n"
 			for i, tag := range tags {
 				msg += fmt.Sprintf("%d. %s\n", i+1, tag.Name)
 			}
-			msg += "\nMasukkan nomor tag, pisahkan dengan koma (contoh: 1 atau 1,2)\n"
-			msg += "Ketik 'all' untuk lihat semua produk\n"
-			msg += "Ketik 'menu' untuk batal"
+			msg += "\nEnter tag number(s), comma-separated (e.g. 1 or 1,2)\n"
+			msg += "Type 'all' to see all products\n"
+			msg += "Type 'menu' to cancel"
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
 		} else {
 			cont.waSendProductList(waClient, chatID, schema, guest, clientID, nil)
@@ -248,11 +258,11 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		}
 
 		if len(parsed) == 0 {
-			msg := "⚠️ Saya tidak bisa mengenali pilihan produkmu.\n\n"
-			msg += "Sebutkan nama produk dan jumlahnya, contoh:\n"
-			msg += "• '1 Mie Tek Tek'\n"
-			msg += "• '2 Nasi Goreng dan 1 Es Teh'\n\n"
-			msg += "Ketik 'menu' untuk batal"
+			msg := "⚠️ I couldn't recognise your product selection.\n\n"
+			msg += "State the product name and quantity, e.g.:\n"
+			msg += "• '1 Chicken Rice'\n"
+			msg += "• '2 Fried Rice and 1 Iced Tea'\n\n"
+			msg += "Type 'menu' to cancel"
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
 			return
 		}
@@ -272,16 +282,16 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 			}
 		}
 		if len(stockIssues) > 0 {
-			msg := "⚠️ Beberapa item tidak tersedia:\n\n"
+			msg := "⚠️ Some items are unavailable:\n\n"
 			for _, s := range stockIssues {
 				msg += s + "\n"
 			}
-			msg += "\nSesuaikan pesananmu dan coba lagi.\n\nKetik 'menu' untuk batal"
+			msg += "\nPlease adjust your order and try again.\n\nType 'menu' to cancel"
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
 			return
 		}
 
-		confirmMsg := "✅ Produk yang dipesan:\n"
+		confirmMsg := "✅ Items selected:\n"
 		for _, p := range parsed {
 			for _, prod := range allProducts {
 				if prod.ID.String() == p.ProductID {
@@ -297,7 +307,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			confirmMsg+"\nSiapa nama lengkap kamu?\n\nKetik 'menu' untuk batal")
+			confirmMsg+"\nWhat is your full name?\n\nType 'menu' to cancel")
 
 	case "name":
 		if guest.ConversationState == nil {
@@ -308,7 +318,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"✅ Nama tersimpan!\n\nAlamat email kamu? (untuk pengiriman invoice)\n\nContoh: nama@gmail.com\n\nKetik 'menu' untuk batal")
+			"✅ Name saved!\n\nYour email address? (for invoice delivery)\n\nExample: name@gmail.com\n\nType 'menu' to cancel")
 
 	case "email":
 		if guest.ConversationState == nil {
@@ -324,7 +334,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		}
 		if !validEmail {
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"⚠️ Format email tidak valid.\n\nContoh: nama@gmail.com\n\nKetik 'menu' untuk batal")
+				"⚠️ Invalid email format.\n\nExample: name@gmail.com\n\nType 'menu' to cancel")
 			return
 		}
 		guest.ConversationState["customer_email"] = email
@@ -332,7 +342,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"✅ Email tersimpan!\n\nAlamat pengiriman? (Jalan, nomor, gedung, dll.)\n\nKetik 'menu' untuk batal")
+			"✅ Email saved!\n\nDelivery address? (Street, number, building, etc.)\n\nType 'menu' to cancel")
 
 	case "address":
 		if guest.ConversationState == nil {
@@ -343,7 +353,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		cont.GuestRepo.Update(cont.Db, schema, *guest)
 
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"✅ Alamat tersimpan!\n\nKode pos?\n\nKetik 'menu' untuk batal")
+			"✅ Address saved!\n\nPostal code?\n\nType 'menu' to cancel")
 
 	case "postal_code":
 		if guest.ConversationState == nil {
@@ -383,8 +393,7 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		if deliveryCharge > 0 {
 			guest.ConversationState["delivery_charge"] = fmt.Sprintf("%.2f", deliveryCharge)
 		}
-		guest.ConversationState["order_step"] = "payment_method"
-		cont.GuestRepo.Update(cont.Db, schema, *guest)
+		stripeReady := cont.waIsStripeConfigured(schema)
 
 		msg := ""
 		if deliveryCharge > 0 {
@@ -393,10 +402,23 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 			msg += fmt.Sprintf("  Ongkir: $%s\n", formatPriceSGD(deliveryCharge))
 			msg += fmt.Sprintf("  Total: $%s\n\n", formatPriceSGD(subtotal+deliveryCharge))
 		}
-		msg += "💳 Pilih metode pembayaran:\n\n"
-		msg += "1. Bayar di tempat (COD)\n"
-		msg += "2. Stripe (Pembayaran Online)\n\n"
-		msg += "Ketik 'menu' untuk batal"
+
+		if !stripeReady {
+			// Stripe not configured — auto-select COD and skip the payment step
+			guest.ConversationState["payment_method"] = "cash_on_delivery"
+			guest.ConversationState["order_step"] = "payment_method"
+			cont.GuestRepo.Update(cont.Db, schema, *guest)
+			cont.waFinalizeCreateOrder(waClient, chatID, schema, guest, clientID)
+			return
+		}
+
+		guest.ConversationState["order_step"] = "payment_method"
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+
+		msg += "💳 Choose payment method:\n\n"
+		msg += "1. Cash on Delivery (COD)\n"
+		msg += "2. Stripe (Online Payment)\n\n"
+		msg += "Type 'menu' to cancel"
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, msg)
 
 	case "payment_method":
@@ -406,10 +428,15 @@ func (cont *WhatsAppContImpl) waContinueCreateOrder(waClient helpers.WhatsAppSen
 		case "1":
 			paymentMethod = "cash_on_delivery"
 		case "2":
+			if !cont.waIsStripeConfigured(schema) {
+				cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
+					"⚠️ Online payment is not available. Type 1 for Cash on Delivery.\n\nType 'menu' to cancel")
+				return
+			}
 			paymentMethod = "stripe"
 		default:
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"⚠️ Ketik 1 untuk Bayar di Tempat atau 2 untuk Stripe.\n\nKetik 'menu' untuk batal")
+				"⚠️ Type 1 for Cash on Delivery or 2 for Stripe.\n\nType 'menu' to cancel")
 			return
 		}
 		if guest.ConversationState == nil {
@@ -466,7 +493,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	if tx.Error != nil {
 		log.Printf("[WhatsApp/Order] ERROR: Failed to start transaction: %v", tx.Error)
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"❌ Gagal membuat pesanan. Silakan coba lagi.")
+			"❌ Failed to create order. Please try again.")
 		return
 	}
 
@@ -501,7 +528,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 			tx.Rollback()
 			log.Printf("[WhatsApp/Order] ERROR: Failed to create customer: %v", createErr)
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"❌ Gagal membuat data pelanggan. Silakan coba lagi.")
+				"❌ Failed to create customer record. Please try again.")
 			return
 		}
 	}
@@ -541,7 +568,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	if len(orderProducts) == 0 {
 		tx.Rollback()
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"❌ Tidak ada produk valid dalam pesanan. Silakan coba lagi.")
+			"❌ No valid products in the order. Please try again.")
 		return
 	}
 
@@ -575,7 +602,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	if err != nil {
 		tx.Rollback()
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"❌ Gagal membuat pesanan. Silakan coba lagi.")
+			"❌ Failed to create order. Please try again.")
 		return
 	}
 
@@ -586,7 +613,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	if err := cont.OrderRepo.CreateOrderProducts(tx, schema, orderProducts); err != nil {
 		tx.Rollback()
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"❌ Gagal menyimpan produk pesanan. Silakan coba lagi.")
+			"❌ Failed to save order items. Please try again.")
 		return
 	}
 
@@ -608,7 +635,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 			tx.Rollback()
 			log.Printf("[WhatsApp/Order] ERROR: Stock decrement failed for product %s: %v", op.ProductID, err)
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"❌ Stok tidak cukup untuk satu atau lebih item. Silakan coba lagi.")
+				"❌ Insufficient stock for one or more items. Please try again.")
 			return
 		}
 	}
@@ -632,7 +659,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 			tx.Rollback()
 			log.Printf("[WhatsApp/Order] Stripe checkout error: %v", stripeErr)
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"❌ Gagal membuat link pembayaran. Silakan coba lagi.")
+				"❌ Failed to create payment link. Please try again.")
 			return
 		}
 		stripeStatus := "open"
@@ -664,7 +691,7 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 		if _, err := cont.OrderPaymentRepo.Create(tx, schema, *orderPayment); err != nil {
 			tx.Rollback()
 			cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-				"❌ Gagal membuat pembayaran. Silakan coba lagi.")
+				"❌ Failed to create payment record. Please try again.")
 			return
 		}
 	}
@@ -672,11 +699,17 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	if err := tx.Commit().Error; err != nil {
 		tx.Rollback()
 		cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema,
-			"❌ Gagal menyelesaikan pesanan. Silakan coba lagi.")
+			"❌ Failed to complete order. Please try again.")
 		return
 	}
 
 	log.Printf("[WhatsApp/Order] ✅ Order created: ID=%d, payment=%s", order.ID, selectedPaymentMethod)
+
+	// Persist phone to guest so future orders skip the phone step
+	if guest.Phone == "" && guestPhone != "" {
+		guest.Phone = guestPhone
+		cont.GuestRepo.Update(cont.Db, schema, *guest)
+	}
 
 	// Fire order notification (WA + email) in background
 	go func() {
@@ -705,29 +738,29 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 		helpers.SendOrderNotification(cont.Db, schema, fmt.Sprintf("%d", order.ID), customerName, totalPrice, notifSender)
 	}()
 
-	summary := "🎉 Pesanan Berhasil Dibuat!\n\n"
-	summary += "✅ Detail pesanan:\n"
-	summary += fmt.Sprintf("- Nomor Order: #%d\n", order.ID)
-	summary += fmt.Sprintf("- Produk: %s\n", productsSummary)
-	summary += fmt.Sprintf("- Nama: %s\n", customerName)
+	summary := "🎉 Order Successfully Placed!\n\n"
+	summary += "✅ Order details:\n"
+	summary += fmt.Sprintf("- Order #: #%d\n", order.ID)
+	summary += fmt.Sprintf("- Items: %s\n", productsSummary)
+	summary += fmt.Sprintf("- Name: %s\n", customerName)
 	summary += fmt.Sprintf("- Phone: %s\n", guestPhone)
-	summary += fmt.Sprintf("- Alamat: %s\n", address)
-	summary += fmt.Sprintf("- Kode pos: %s\n", postalCode)
+	summary += fmt.Sprintf("- Address: %s\n", address)
+	summary += fmt.Sprintf("- Postal code: %s\n", postalCode)
 	if deliveryCharge > 0 {
 		summary += fmt.Sprintf("- Subtotal: $%s\n", formatPriceSGD(subtotalPrice))
-		summary += fmt.Sprintf("- Ongkir: $%s\n", formatPriceSGD(deliveryCharge))
+		summary += fmt.Sprintf("- Delivery: $%s\n", formatPriceSGD(deliveryCharge))
 	}
 	summary += fmt.Sprintf("- Total: $%s\n", formatPriceSGD(totalPrice))
 
 	if selectedPaymentMethod == "cash_on_delivery" {
-		summary += "\n💵 Pembayaran: Bayar di Tempat (COD)\n"
-		summary += fmt.Sprintf("Siapkan uang tunai $%s saat pengiriman tiba.\n\n", formatPriceSGD(totalPrice))
+		summary += "\n💵 Payment: Cash on Delivery (COD)\n"
+		summary += fmt.Sprintf("Please prepare $%s cash upon delivery.\n\n", formatPriceSGD(totalPrice))
 	} else {
-		summary += "\n💳 Bayar Sekarang:\n"
+		summary += "\n💳 Pay Now:\n"
 		summary += fmt.Sprintf("%s\n\n", *orderPayment.PaymentSessionURL)
-		summary += "⏰ Link pembayaran berlaku 15 menit!\n\n"
+		summary += "⏰ Payment link valid for 15 minutes!\n\n"
 	}
-	summary += "Ketik 'menu' untuk kembali ke menu utama."
+	summary += "Type 'menu' to return to the main menu."
 
 	cont.sendWABotMessage(waClient, clientID, guest.ID, guest.Name, chatID, schema, summary)
 
@@ -745,6 +778,18 @@ func (cont *WhatsAppContImpl) waFinalizeCreateOrder(waClient helpers.WhatsAppSen
 	delete(guest.ConversationState, "available_tags")
 	delete(guest.ConversationState, "delivery_charge")
 	cont.GuestRepo.Update(cont.Db, schema, *guest)
+}
+
+// waIsStripeConfigured returns true when the tenant has a non-empty Stripe secret key saved.
+func (cont *WhatsAppContImpl) waIsStripeConfigured(schema string) bool {
+	var secretKey string
+	cont.Db.Raw(fmt.Sprintf(
+		`SELECT value FROM %s.setting WHERE group_name = 'integration' AND sub_group_name = 'Stripe Client' AND name = 'stripe-client-secret-key' LIMIT 1`,
+		schema,
+	)).Scan(&secretKey)
+	configured := secretKey != ""
+	log.Printf("[WhatsApp/Stripe] schema=%s stripe_configured=%v key_len=%d", schema, configured, len(secretKey))
+	return configured
 }
 
 // waCreateStripeCheckout creates a Stripe Checkout Session for a WhatsApp order.

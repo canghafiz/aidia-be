@@ -3,7 +3,9 @@ package impl
 import (
 	"backend/models/domains"
 	"backend/models/repositories"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -96,6 +98,16 @@ func (repo *GuestRepoImpl) MarkAsRead(db *gorm.DB, schema string, guestID uuid.U
 
 func (repo *GuestRepoImpl) Update(db *gorm.DB, schema string, guest domains.Guest) error {
 	return db.Table(schema + "." + guest.TableName()).Save(&guest).Error
+}
+
+func (repo *GuestRepoImpl) FindActiveGuests(db *gorm.DB, schema string, withinMinutes int) ([]domains.Guest, error) {
+	var guests []domains.Guest
+	threshold := time.Now().UTC().Add(-time.Duration(withinMinutes) * time.Minute)
+	err := db.Table(fmt.Sprintf("%s.guest", schema)).
+		Where("last_message_at >= ?", threshold).
+		Order("last_message_at DESC").
+		Find(&guests).Error
+	return guests, err
 }
 
 var _ repositories.GuestRepo = (*GuestRepoImpl)(nil)

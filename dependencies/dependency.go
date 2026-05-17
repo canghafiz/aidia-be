@@ -72,6 +72,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 	guestRepo := impl.NewGuestRepoImpl()
 	guestMessageRepo := impl.NewGuestMessageRepoImpl()
 	whatsAppConnectionRepo := impl.NewWhatsAppConnectionRepoImpl()
+	knowledgeBaseRepo := impl.NewKnowledgeBaseRepoImpl()
 
 	// Serv
 	n8nTelegramServ := implServ.NewTelegramN8NServImpl()
@@ -102,7 +103,7 @@ func NewDependency(db *gorm.DB, validator *validator.Validate, jwtKey string) *D
 		UsersRepo:                       userRepo,
 		UsersCont:                       implCont.NewUsersContImpl(userServ),
 		RoleCont:                        implCont.NewRoleContImpl(roleServ),
-		SettingCont:                     implCont.NewSettingContImpl(settingServ, userRepo, db),
+		SettingCont:                     implCont.NewSettingContImpl(settingServ, userRepo, db, fileServ, knowledgeBaseRepo),
 		PlanCont:                        implCont.NewPlanContImpl(planServ),
 		ApprovalCont:                    implCont.NewApprovalCont(approvalServ),
 		PaymentCont:                     implCont.NewPaymentContImpl(paymentServ),

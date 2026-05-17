@@ -276,6 +276,7 @@ func NewRouter(r Router) *Router {
 			clientOnly := middlewares.ClientOnlyMiddleware(r.Dependency.JwtKey)
 			chatWithAuth := chatGroup.Use(middleware, clientOnly)
 			{
+				chatWithAuth.GET("/active", r.Dependency.ChatCont.GetActiveChats)
 				chatWithAuth.PATCH("/:platform/:guest_id/read", r.Dependency.ChatCont.MarkAsRead)
 				chatWithAuth.POST("/:platform/:guest_id/messages", r.Dependency.ChatCont.SendManualReply)
 				chatWithAuth.POST("/:platform/:guest_id/messages/template", r.Dependency.ChatCont.SendTemplateMessage)
@@ -292,7 +293,16 @@ func NewRouter(r Router) *Router {
 		integrationGroup := generalGroup.Group("client/:client_id/integration").Use(middleware)
 		{
 			integrationGroup.GET("", r.Dependency.SettingCont.GetClientIntegration)
+			integrationGroup.GET("/stripe/status", r.Dependency.SettingCont.GetClientStripeStatus)
 			integrationGroup.PATCH("/:sub_group_name", r.Dependency.SettingCont.UpdateClientIntegration)
+		}
+
+		// Knowledge Base
+		kbGroup := generalGroup.Group("client/:client_id/knowledge-base").Use(middleware)
+		{
+			kbGroup.GET("", r.Dependency.SettingCont.ListKnowledgeBase)
+			kbGroup.POST("", r.Dependency.SettingCont.UploadKnowledgeBase)
+			kbGroup.DELETE("/:kb_id", r.Dependency.SettingCont.DeleteKnowledgeBase)
 		}
 
 		// WhatsApp Embedded Signup — public config endpoint (no auth)

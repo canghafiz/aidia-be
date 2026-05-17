@@ -9,4 +9,5 @@ type ChatCont interface {
 	SendManualReply(ctx *gin.Context)
 	SendTemplateMessage(ctx *gin.Context)
 	InitTelegramChat(ctx *gin.Context)
+	GetActiveChats(ctx *gin.Context)
 }

@@ -133,8 +133,8 @@ func (serv *OrderServImpl) Create(accessToken string, clientID uuid.UUID, reques
 		return nil, fmt.Errorf("failed to start transaction")
 	}
 
-	// Look up customer by phone — use existing record if found, create new one otherwise
-	customer, err := serv.CustomerRepo.GetByPhone(tx, schema, request.PhoneCountryCode, request.PhoneNumber)
+	// Look up customer by concatenated phone — handles both manually-split and WA-auto-created records
+	customer, err := serv.CustomerRepo.GetByConcatPhone(tx, schema, request.PhoneCountryCode+request.PhoneNumber)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			customer, err = serv.CustomerRepo.Create(tx, schema, domains.Customer{

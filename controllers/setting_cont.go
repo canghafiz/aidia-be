@@ -14,4 +14,8 @@ type SettingCont interface {
 	UpdateClientAIPromptSection(context *gin.Context)
 	GetClientKDS(context *gin.Context)
 	SetClientKDS(context *gin.Context)
+	GetClientStripeStatus(context *gin.Context)
+	UploadKnowledgeBase(ctx *gin.Context)
+	ListKnowledgeBase(ctx *gin.Context)
+	DeleteKnowledgeBase(ctx *gin.Context)
 }

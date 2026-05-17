@@ -108,12 +108,25 @@ func (m *UsersRepoMock) Update(db *gorm.DB, user domains.Users) error {
 	return args.Error(0)
 }
 
-func (m *UsersRepoMock) GetUsers(db *gorm.DB, pagination domains.Pagination) ([]domains.Users, int, error) {
+func (m *UsersRepoMock) GetUsers(db *gorm.DB, exceptId string, pagination domains.Pagination) ([]domains.Users, int, error) {
+	args := m.Called(db, exceptId, pagination)
+	if args.Get(0) == nil {
+		return nil, args.Int(1), args.Error(2)
+	}
+	return args.Get(0).([]domains.Users), args.Int(1), args.Error(2)
+}
+
+func (m *UsersRepoMock) GetUsersRoleClient(db *gorm.DB, pagination domains.Pagination) ([]domains.Users, int, error) {
 	args := m.Called(db, pagination)
 	if args.Get(0) == nil {
 		return nil, args.Int(1), args.Error(2)
 	}
 	return args.Get(0).([]domains.Users), args.Int(1), args.Error(2)
+}
+
+func (m *UsersRepoMock) CreateApprovalLogs(db *gorm.DB, model domains.TenantApprovalLogs) error {
+	args := m.Called(db, model)
+	return args.Error(0)
 }
 
 func (m *UsersRepoMock) FilterUsers(db *gorm.DB, name, email, role string, pagination domains.Pagination) ([]domains.Users, int, error) {

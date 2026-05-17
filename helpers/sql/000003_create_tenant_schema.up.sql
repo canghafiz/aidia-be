@@ -460,6 +460,21 @@ CREATE TRIGGER trg_insert_kitchen_order_on_confirmed
 EXECUTE FUNCTION :schema_name.fn_insert_kitchen_order_on_confirmed();
 
 -- ============================================================
+-- Knowledge Base
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS :schema_name.knowledge_base (
+    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_name      VARCHAR(255) NOT NULL,
+    file_url       TEXT         NOT NULL,
+    extracted_text TEXT         NOT NULL DEFAULT '',
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_knowledge_base_created_at ON :schema_name.knowledge_base (created_at);
+
+-- ============================================================
 -- Function: Expire Orders (run by scheduler every 1 minute)
 -- ============================================================
 

@@ -58,7 +58,7 @@ func (repo *CustomerRepoImpl) GetByPhone(db *gorm.DB, schema string, phoneCountr
 func (repo *CustomerRepoImpl) GetByConcatPhone(db *gorm.DB, schema string, phoneDigits string) (*domains.Customer, error) {
 	var customer domains.Customer
 	if err := db.Table(schema+".customer").
-		Where("phone_country_code || phone_number = ?", phoneDigits).
+		Where("COALESCE(phone_country_code, '') || COALESCE(phone_number, '') = ?", phoneDigits).
 		First(&customer).Error; err != nil {
 		return nil, err
 	}

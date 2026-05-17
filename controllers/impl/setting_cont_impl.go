@@ -3,27 +3,39 @@ package impl
 import (
 	"backend/exceptions"
 	"backend/helpers"
+	"backend/models/domains"
 	"backend/models/repositories"
 	req "backend/models/requests/setting"
 	"backend/models/services"
-
+	"bytes"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	pdf "github.com/ledongthuc/pdf"
 	"gorm.io/gorm"
 )
 
 type SettingContImpl struct {
-	SettingServ services.SettingServ
-	UserRepo    repositories.UsersRepo
-	Db          *gorm.DB
+	SettingServ       services.SettingServ
+	UserRepo          repositories.UsersRepo
+	Db                *gorm.DB
+	FileServ          services.FileServ
+	KnowledgeBaseRepo repositories.KnowledgeBaseRepo
 }
 
-func NewSettingContImpl(settingServ services.SettingServ, userRepo repositories.UsersRepo, db *gorm.DB) *SettingContImpl {
+func NewSettingContImpl(settingServ services.SettingServ, userRepo repositories.UsersRepo, db *gorm.DB, fileServ services.FileServ, kbRepo repositories.KnowledgeBaseRepo) *SettingContImpl {
 	return &SettingContImpl{
-		SettingServ: settingServ,
-		UserRepo:    userRepo,
-		Db:          db,
+		SettingServ:       settingServ,
+		UserRepo:          userRepo,
+		Db:                db,
+		FileServ:          fileServ,
+		KnowledgeBaseRepo: kbRepo,
 	}
 }
 
@@ -400,6 +412,17 @@ func (cont *SettingContImpl) UpdateClientAIPromptSection(context *gin.Context) {
 
 	if section == "operational" {
 		cont.syncBotStateFromOperationalHours(schema, request.Prompt)
+	} else if section == "store-operational" {
+		// Sync immediately only when AI Operational hours are not set.
+		// If they are set, the scheduler will re-apply AI hours within a minute.
+		var aiHours string
+		cont.Db.Raw(fmt.Sprintf(
+			`SELECT value FROM %s.setting WHERE group_name = 'ai_prompt' AND sub_group_name = 'AI Operational' AND name = 'ai-operational-prompt' LIMIT 1`,
+			schema,
+		)).Scan(&aiHours)
+		if aiHours == "" {
+			cont.syncBotStateFromOperationalHours(schema, request.Prompt)
+		}
 	}
 
 	helpers.WriteToResponseBody(context, 200, helpers.ApiResponse{
@@ -449,4 +472,205 @@ func (cont *SettingContImpl) syncBotStateFromOperationalHours(schema, hoursJSON 
 			schema,
 		), platform, botEnabled)
 	}
+}
+
+// UploadKnowledgeBase godoc
+// @Summary      Upload a PDF to the knowledge base
+// @Tags         Settings
+// @Accept       multipart/form-data
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path      string  true  "Client ID"
+// @Param        file       formData  file    true  "PDF file (max 10 MB)"
+// @Success      200        {object}  helpers.ApiResponse
+// @Failure      400        {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/knowledge-base [post]
+func (cont *SettingContImpl) UploadKnowledgeBase(ctx *gin.Context) {
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	fileHeader, err := ctx.FormFile("file")
+	if err != nil {
+		helpers.WriteToResponseBody(ctx, 400, helpers.ApiResponse{Success: false, Code: 400, Data: "No file uploaded"})
+		return
+	}
+
+	if !strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".pdf") {
+		helpers.WriteToResponseBody(ctx, 400, helpers.ApiResponse{Success: false, Code: 400, Data: "Only PDF files are allowed"})
+		return
+	}
+
+	const maxSize = 10 * 1024 * 1024
+	if fileHeader.Size > maxSize {
+		helpers.WriteToResponseBody(ctx, 400, helpers.ApiResponse{Success: false, Code: 400, Data: "File must be at most 10 MB"})
+		return
+	}
+
+	extractedText := extractPDFWithTimeout(fileHeader)
+
+	uploaded, uploadErr := cont.FileServ.UploadFiles([]*multipart.FileHeader{fileHeader})
+	if uploadErr != nil || len(uploaded) == 0 {
+		helpers.WriteToResponseBody(ctx, 500, helpers.ApiResponse{Success: false, Code: 500, Data: "Failed to upload file"})
+		return
+	}
+
+	kb := domains.KnowledgeBase{
+		FileName:      fileHeader.Filename,
+		FileURL:       uploaded[0].FileURL,
+		ExtractedText: extractedText,
+	}
+	created, dbErr := cont.KnowledgeBaseRepo.Create(cont.Db, schema, kb)
+	if dbErr != nil {
+		helpers.WriteToResponseBody(ctx, 500, helpers.ApiResponse{Success: false, Code: 500, Data: "Failed to save knowledge base entry"})
+		return
+	}
+
+	_ = helpers.WriteToResponseBody(ctx, 200, helpers.ApiResponse{Success: true, Code: 200, Data: created})
+}
+
+// ListKnowledgeBase godoc
+// @Summary      List knowledge base files
+// @Tags         Settings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID"
+// @Success      200        {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/knowledge-base [get]
+func (cont *SettingContImpl) ListKnowledgeBase(ctx *gin.Context) {
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	items, err := cont.KnowledgeBaseRepo.FindAll(cont.Db, schema)
+	if err != nil {
+		helpers.WriteToResponseBody(ctx, 500, helpers.ApiResponse{Success: false, Code: 500, Data: "Failed to load knowledge base"})
+		return
+	}
+
+	_ = helpers.WriteToResponseBody(ctx, 200, helpers.ApiResponse{Success: true, Code: 200, Data: items})
+}
+
+// DeleteKnowledgeBase godoc
+// @Summary      Delete a knowledge base file
+// @Tags         Settings
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID"
+// @Param        kb_id      path  string  true  "Knowledge Base entry ID"
+// @Success      200        {object}  helpers.ApiResponse
+// @Failure      400        {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/knowledge-base/{kb_id} [delete]
+func (cont *SettingContImpl) DeleteKnowledgeBase(ctx *gin.Context) {
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		exceptions.ErrorHandler(ctx, err)
+		return
+	}
+
+	idStr := ctx.Param("kb_id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		helpers.WriteToResponseBody(ctx, 400, helpers.ApiResponse{Success: false, Code: 400, Data: "Invalid ID"})
+		return
+	}
+
+	kb, err := cont.KnowledgeBaseRepo.FindByID(cont.Db, schema, id)
+	if err != nil {
+		helpers.WriteToResponseBody(ctx, 404, helpers.ApiResponse{Success: false, Code: 404, Data: "Knowledge base entry not found"})
+		return
+	}
+
+	if err := cont.KnowledgeBaseRepo.Delete(cont.Db, schema, id); err != nil {
+		helpers.WriteToResponseBody(ctx, 500, helpers.ApiResponse{Success: false, Code: 500, Data: "Failed to delete"})
+		return
+	}
+
+	_ = cont.FileServ.DeleteFile(kb.FileURL)
+
+	_ = helpers.WriteToResponseBody(ctx, 200, helpers.ApiResponse{Success: true, Code: 200, Data: nil})
+}
+
+func extractPDFWithTimeout(fh *multipart.FileHeader) string {
+	type result struct {
+		text string
+		err  error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		f, err := fh.Open()
+		if err != nil {
+			ch <- result{"", err}
+			return
+		}
+		defer f.Close()
+		text, err := extractPDFText(f)
+		ch <- result{text, err}
+	}()
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return ""
+		}
+		return r.text
+	case <-time.After(15 * time.Second):
+		return ""
+	}
+}
+
+func extractPDFText(r io.Reader) (string, error) {
+	tmp, err := os.CreateTemp("", "kb-*.pdf")
+	if err != nil {
+		return "", err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := io.Copy(tmp, r); err != nil {
+		tmp.Close()
+		return "", err
+	}
+	tmp.Close()
+
+	f, pdfReader, err := pdf.Open(tmpName)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	plainText, err := pdfReader.GetPlainText()
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(plainText); err != nil {
+		return "", err
+	}
+
+	text := strings.TrimSpace(buf.String())
+	const maxLen = 20000
+	if len(text) > maxLen {
+		text = text[:maxLen]
+	}
+	return text, nil
 }

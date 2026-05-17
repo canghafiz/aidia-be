@@ -14,6 +14,7 @@ type GuestRepo interface {
 	FindByUsername(db *gorm.DB, schema, username string) (*domains.Guest, error)
 	FindByPhone(db *gorm.DB, schema, phone string) (*domains.Guest, error)
 	FindAllByTenantID(db *gorm.DB, schema string, tenantID uuid.UUID, platform string, pagination domains.Pagination) ([]domains.Guest, int64, error)
+	FindActiveGuests(db *gorm.DB, schema string, withinMinutes int) ([]domains.Guest, error)
 	MarkAsRead(db *gorm.DB, schema string, guestID uuid.UUID) error
 	Update(db *gorm.DB, schema string, guest domains.Guest) error
 }

@@ -423,3 +423,71 @@ func (cont *ChatContImpl) InitTelegramChat(ctx *gin.Context) {
 
 	ctx.JSON(200, gin.H{"success": true, "data": gin.H{"start_link": startLink}})
 }
+
+// GetActiveChats godoc
+// @Summary      Get Active Chats
+// @Description  Returns guests that have sent a message within the last 5 minutes. Each item includes last_message_at so the frontend can distinguish active (<3 min) from transitioning (3-5 min).
+// @Tags         Chat
+// @Produce      json
+// @Security     BearerAuth
+// @Param        client_id  path  string  true  "Client ID (UUID)"
+// @Success      200  {object}  helpers.ApiResponse{data=[]map[string]interface{}}
+// @Failure      400  {object}  helpers.ApiResponse
+// @Failure      401  {object}  helpers.ApiResponse
+// @Router       /client/{client_id}/chats/active [get]
+func (cont *ChatContImpl) GetActiveChats(ctx *gin.Context) {
+	accessToken := helpers.GetJwtToken(ctx)
+	if _, err := helpers.DecodeJWT(accessToken, cont.JwtKey); err != nil {
+		ctx.AbortWithStatusJSON(401, gin.H{"error": "invalid token"})
+		return
+	}
+
+	clientID, err := helpers.ParseUUID(ctx, "client_id")
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": "invalid client_id"})
+		return
+	}
+
+	schema, err := helpers.GetSchema(cont.Db, cont.UserRepo, clientID)
+	if err != nil {
+		ctx.AbortWithStatusJSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	guests, err := cont.GuestRepo.FindActiveGuests(cont.Db, schema, 5)
+	if err != nil {
+		ctx.AbortWithStatusJSON(500, gin.H{"error": "failed to load active chats"})
+		return
+	}
+
+	now := time.Now().UTC()
+	result := make([]map[string]interface{}, 0, len(guests))
+	for _, g := range guests {
+		var minutesAgo float64
+		if g.LastMessageAt != nil {
+			minutesAgo = now.Sub(g.LastMessageAt.UTC()).Minutes()
+		}
+
+		status := "transitioning"
+		if minutesAgo < 3 {
+			status = "active"
+		}
+
+		result = append(result, map[string]interface{}{
+			"id":              g.ID,
+			"name":            g.Name,
+			"platform":        g.Platform,
+			"last_message_at": g.LastMessageAt,
+			"minutes_ago":     minutesAgo,
+			"status":          status,
+			"is_read":         g.IsRead,
+			"is_take_over":    g.IsTakeOver,
+		})
+	}
+
+	ctx.JSON(200, gin.H{
+		"success": true,
+		"code":    200,
+		"data":    result,
+	})
+}
